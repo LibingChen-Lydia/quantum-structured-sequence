@@ -11,7 +11,7 @@ import torch
 from torch.nn import functional as F
 
 from qss.classical import StructuredEncoderConfig, StructuredSequenceEncoder
-from qss.data import load_etth1
+from qss.data.tsl_adapter import load_tsl
 from qss.fusion import StructuredRetrievalForecaster, pooled_periodic_tokens
 from qss.quantum.circuits import CircuitSpec
 from qss.quantum.interaction import QuantumInteractionLayer
@@ -81,14 +81,17 @@ def evaluate(model: StructuredRetrievalForecaster, bank: QuantumMemoryBank, base
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data", type=Path, default=ROOT / "data/raw/ETTh1.csv")
+    parser.add_argument("--tsl-root", type=Path, default=ROOT / "third_party/Time-Series-Library")
     parser.add_argument("--pred-len", type=int, choices=(96, 192, 336, 720), required=True)
     parser.add_argument("--seed", type=int, default=2021)
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--output", type=Path, default=ROOT / "outputs/final_model")
     args = parser.parse_args()
     torch.manual_seed(args.seed)
-    train_data, test_data = (load_etth1(args.data, split, pred_len=args.pred_len) for split in ("train", "test"))
+    train_data, test_data = (
+        load_tsl("ETTh1", split, seq_len=96, pred_len=args.pred_len, root=args.tsl_root)
+        for split in ("train", "test")
+    )
     n_train, n_test = (512, 128) if args.quick else (len(train_data.inputs), len(test_data.inputs))
     x, y, t = train_data.inputs[:n_train], train_data.targets[:n_train], train_data.end_times[:n_train]
     encoder = StructuredSequenceEncoder(StructuredEncoderConfig(patch_lengths=(24, 48, 96), period=24)).fit(x)
