@@ -101,8 +101,13 @@ class StructuredRetrievalForecaster(nn.Module):
         if amplitude.shape[-1] != self.periodic_layer.spec.n_items:
             raise ValueError("periodic token count must match the Module A circuit specification")
         circuit_dtype = self.periodic_layer.weights.dtype
-        theta = torch.arcsin(torch.clamp(amplitude.to(dtype=circuit_dtype) / self.amp_max, 0.0, 1.0))
-        periodic = self.periodic_layer(theta, phase.to(dtype=circuit_dtype)).to(dtype=retrieval_features.dtype)
+        circuit_device = self.periodic_layer.weights.device
+        theta = torch.arcsin(torch.clamp(
+            amplitude.to(device=circuit_device, dtype=circuit_dtype) / self.amp_max, 0.0, 1.0
+        ))
+        periodic = self.periodic_layer(
+            theta, phase.to(device=circuit_device, dtype=circuit_dtype)
+        ).to(device=retrieval_features.device, dtype=retrieval_features.dtype)
         return torch.cat((retrieval_features, periodic), dim=-1), periodic
 
     def forward(

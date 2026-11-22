@@ -16,8 +16,9 @@ from qss.quantum.circuits import CircuitSpec, circuit
 def make_qnode(spec: CircuitSpec, device: str = "default.qubit", shots: int | None = None):
     dev = qml.device(device, wires=spec.n_wires)
     fn = partial(circuit, spec)
+    diff_method = "parameter-shift" if shots is not None else "adjoint" if device == "lightning.gpu" else "backprop"
     qnode = qml.QNode(
-        fn, dev, interface="torch", diff_method="backprop" if shots is None else "parameter-shift"
+        fn, dev, interface="torch", diff_method=diff_method
     )
     if shots is not None:
         qnode = qml.set_shots(qnode, shots=shots)
