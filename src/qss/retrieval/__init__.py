@@ -1,7 +1,7 @@
 from qss.retrieval.task_aware import (
     QuantumMemoryBank,
-    RetrievedFutureAttention,
     RetrievalBatch,
+    RetrievedFutureAttention,
     TaskAwareForecastHead,
     TaskAwareRetriever,
     TemporalANNIndex,
@@ -11,8 +11,8 @@ from qss.retrieval.task_aware import (
 
 __all__ = [
     "QuantumMemoryBank",
-    "RetrievedFutureAttention",
     "RetrievalBatch",
+    "RetrievedFutureAttention",
     "TaskAwareForecastHead",
     "TaskAwareRetriever",
     "TemporalANNIndex",
