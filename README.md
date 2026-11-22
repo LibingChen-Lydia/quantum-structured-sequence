@@ -1,11 +1,11 @@
 # Quantum-Structured Sequence
 
-Hybrid quantum–classical sequence modelling for the Infleqtion Hackathon, deliberately scoped to two independently testable modules:
+Hybrid quantum–classical sequence modelling for the Infleqtion Hackathon, built around two independently testable modules:
 
 - **Module A — Structured Quantum Periodic Interaction:** encode amplitude, phase, frequency, and trend features from time-series patches; compare structured entanglement topologies.
 - **Module C — Quantum-Assisted Hierarchical Retrieval:** retrieve candidates classically from a history bank, then re-rank them with a quantum fidelity kernel.
 
-Module B (Quantum Shadow Memory) is out of scope for this repository. That keeps the hackathon deliverable focused on clear baselines, controlled ablations, and an end-to-end demonstrator.
+Together, the modules provide clear baselines, controlled ablations, and an end-to-end demonstrator.
 
 ## Architecture
 
