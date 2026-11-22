@@ -26,13 +26,10 @@ encoder.
 | Dataset | Feature setting | Training partition | Validation partition | Test partition |
 |---|---|---|---|---|
 | ETTh1 | Multivariate (`M`) | First 12 months | Next 4 months | Final 4 months |
-| ETTm1 | Multivariate (`M`) | First 12 months | Next 4 months | Final 4 months |
 | Weather | Multivariate (`M`) | First 70% | Next 10% | Final 20% |
-| Traffic | Multivariate (`M`) | First 70% | Next 10% | Final 20% |
 
 The implementation follows the corresponding Time-Series-Library loaders:
-`Dataset_ETT_hour` for ETTh1, `Dataset_ETT_minute` for ETTm1, and
-`Dataset_Custom` for Weather and Traffic. Long-term forecasting experiments use
+`Dataset_ETT_hour` for ETTh1 and `Dataset_Custom` for Weather. Long-term forecasting experiments use
 an input window length of `seq_len=96`.
 
 ## Preprocessing contract

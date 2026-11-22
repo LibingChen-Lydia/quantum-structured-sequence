@@ -18,9 +18,9 @@ construction used by the common structured encoder.
 |---|---|
 | Input length | 96 |
 | Forecast horizons | 96, 192, 336, 720 |
-| Real-world datasets | ETTh1, ETTm1, Weather, Traffic |
+| Real-world datasets | ETTh1, Weather |
 | Feature setting | Multivariate (`M`) |
-| Random seeds | 42, 43, 44 |
+| Random seeds | 2021, 2022, 2023 |
 | Shared encoder | `StructuredSequenceEncoder` with Patch lengths 24, 48, 96 |
 | Result summary | Mean and standard deviation over three seeds |
 
@@ -47,21 +47,20 @@ circuit depth, circuit executions, latency, seed, and metrics.
 ## Module C experiments
 
 Module C uses the current window to retrieve useful historical contexts and
-fuses those contexts with a forecasting path.
+fuses them with the current query representation in a final MLP.
 
 ```text
-current sequence -> Patch prediction path -> base forecast
-                -> task-aware key/query -> ANN candidates -> quantum re-rank
-                -> historical context -> gated residual correction
+current sequence -> ordered Patch tokens -> task-aware query/key
+                -> ANN candidates -> quantum re-rank -> historical context
+                -> [query; context] -> MLP forecast
 ```
 
 ### Core comparison
 
 | Variant | Historical context ranking | Forecast fusion |
 |---|---|---|
-| Forecast path | Current-window Patch representation | Base forecast |
-| Classical retrieval | Learned key/query similarity | Gated residual context |
-| Quantum retrieval | Learned key/query candidates plus quantum fidelity re-ranking | Gated residual context |
+| Classical retrieval | Learned key/query similarity | Query and context MLP |
+| Quantum retrieval | Learned key/query candidates plus quantum fidelity re-ranking | Query and context MLP |
 
 ### Quantum-focused ablations
 

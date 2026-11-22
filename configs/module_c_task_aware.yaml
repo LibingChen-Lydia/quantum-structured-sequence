@@ -1,7 +1,6 @@
-seed: 42
+seed: 2021
 benchmark:
-  dataset: ETTh1
-  data_path: data/raw/ETTh1.csv
+  datasets: [ETTh1, Weather]
   features: M
   seq_len: 96
   pred_lens: [96, 192, 336, 720]
