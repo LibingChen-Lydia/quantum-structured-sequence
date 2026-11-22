@@ -3,11 +3,13 @@
 All numbers are test MSE (mean over 3 seeds unless noted). They come from
 [results_module_a.md](results_module_a.md), which `make_plots.py` regenerates from the run
 records. Simulator: PennyLane `default.qubit`, exact expectations unless shots are stated.
+Features come from the shared `StructuredSequenceEncoder` (`qss.classical.encoder`), fitted on
+the training split only.
 
 ## What is built (M1)
 
-- An end-to-end pipeline: noisy series → DFT amplitude/phase patch features → quantum
-  interaction backend → prediction.
+- An end-to-end pipeline: noisy series → shared `StructuredSequenceEncoder` (amplitude/phase per
+  patch) → quantum interaction backend → prediction.
 - `PennyLaneInteractionBackend` implements the shared `InteractionBackend` protocol. It supports
   finite shots and any PennyLane device.
 - Every run logs qubits, circuit depth, two-qubit gates, measurement settings, circuit executions

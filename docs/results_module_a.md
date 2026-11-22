@@ -70,7 +70,7 @@ One qubit per period patch, hybrid encoding, readout restricted to single-qubit 
 
 | model | depth | 2q gates | circuit depth | meas. settings | train MSE | test MSE |
 |---|---|---|---|---|---|---|
-| Quantum hybrid / cross_period / D=1 / z | 1 | 3 | 5 | 1 | 0.0024 | 0.0024 ± 0.0001 |
+| Quantum hybrid / cross_period / D=1 / z | 1 | 3 | 5 | 1 | 0.0025 | 0.0024 ± 0.0001 |
 | Explicit interaction (ridge) | – | – | – | – | 0.0023 | 0.0025 ± 0.0001 |
 | Quantum hybrid / none / D=1 / pauli2 | 1 | 0 | 4 | 33 | 0.0023 | 0.0026 ± 0.0001 |
 | Quantum hybrid / learned RZZ / D=1 / z / L1=0.0 | 1 | 15 | 13 | 1 | 0.0162 | 0.0175 ± 0.0211 |
