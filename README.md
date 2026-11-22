@@ -67,6 +67,13 @@ pytest
 
 Every run must record seed, backend, qubit count, circuit depth, shots, quantum calls, and wall-clock time. See [docs/experiment_protocol.md](docs/experiment_protocol.md).
 
+## Module C — task-aware retrieval
+
+Module C learns a query/key memory space from structured Patch embeddings, using future-trajectory
+similarity as contrastive training supervision. The memory bank uses ANN/HNSW candidate retrieval,
+quantum fidelity re-ranking, and attention fusion of retrieved future trajectories. The complete
+contract and temporal-validity rules are in [docs/module_c_task_aware_retrieval.md](docs/module_c_task_aware_retrieval.md).
+
 ## Status
 
 Scaffolded for the Module A + C hackathon MVP. The next implementation milestones are:

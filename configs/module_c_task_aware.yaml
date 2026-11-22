@@ -1,0 +1,17 @@
+seed: 42
+encoder:
+  patch_lengths: [24, 48, 96]
+  period: 24
+retrieval:
+  embedding_dim: 32
+  quantum_dim: 4
+  candidate_count: 20
+  top_k: 3
+  future_horizon: 12
+training:
+  temperature: 0.1
+  positives_per_query: 1
+  contrastive_weight: 0.2
+evaluation:
+  rerankers: [cosine, rbf, learned_metric, quantum_fidelity]
+  metrics: [recall_at_k, mrr, mse, mae, latency_ms, quantum_calls]
