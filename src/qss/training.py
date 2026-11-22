@@ -24,7 +24,7 @@ def predict(model: nn.Module, amp: np.ndarray, phase: np.ndarray, batch: int = 2
 
 
 def train(model: nn.Module, train_set, val_set, *, seed: int, lr: float = 0.01, epochs: int = 300,
-          batch: int = 128, patience: int = 30) -> dict:
+          batch: int = 128, patience: int = 30, l1: float = 0.0) -> dict:
     torch.manual_seed(seed)
     amp, phase, y = (_t(a) for a in train_set)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
@@ -39,6 +39,8 @@ def train(model: nn.Module, train_set, val_set, *, seed: int, lr: float = 0.01, 
             idx = perm[i:i + batch]
             opt.zero_grad()
             loss = torch.mean((model(amp[idx], phase[idx]) - y[idx]) ** 2)
+            if l1 and hasattr(model, "layer"):
+                loss = loss + model.layer.regularization(l1)
             loss.backward()
             opt.step()
         val = float(np.mean((predict(model, val_set[0], val_set[1]) - val_set[2]) ** 2))

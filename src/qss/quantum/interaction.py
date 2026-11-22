@@ -33,15 +33,30 @@ class QuantumInteractionLayer(nn.Module):
         g = torch.Generator().manual_seed(seed)
         init = torch.rand(spec.weight_shape, generator=g, dtype=torch.float64) * 2 * np.pi
         self.weights = nn.Parameter(init)
+        # learned topology: start with weak entanglers so training must switch edges on
+        ent = (torch.rand(spec.ent_shape, generator=g, dtype=torch.float64) - 0.5) * 0.6
+        self.ent = nn.Parameter(ent) if spec.learned else None
         self.qnode = make_qnode(spec, device)
         self.n_out = len(spec.observables())
         self.calls = 0  # circuit executions (one per sample per measurement setting)
 
     def forward(self, theta: torch.Tensor, phi: torch.Tensor) -> torch.Tensor:
-        out = self.qnode(theta, phi, self.weights)
+        out = self.qnode(theta, phi, self.weights, self.ent)
         self.calls += theta.shape[0]
         q = torch.stack(list(out), dim=-1) if isinstance(out, (list, tuple)) else out[..., None]
         return q.reshape(theta.shape[0], self.n_out)
+
+    def edge_strength(self) -> np.ndarray | None:
+        """|sin(gamma)| per (layer, edge) for the learned topology."""
+        if self.ent is None:
+            return None
+        return torch.abs(torch.sin(self.ent)).detach().numpy()
+
+    def regularization(self, l1: float) -> torch.Tensor:
+        """L1 penalty on entangling strength: pushes unneeded edges to zero."""
+        if self.ent is None or l1 == 0:
+            return torch.zeros((), dtype=torch.float64)
+        return l1 * torch.abs(torch.sin(self.ent)).sum()
 
 
 class PennyLaneInteractionBackend:
@@ -52,9 +67,10 @@ class PennyLaneInteractionBackend:
     """
 
     def __init__(self, spec: CircuitSpec, weights: np.ndarray, device: str = "default.qubit",
-                 shots: int | None = None) -> None:
+                 shots: int | None = None, ent: np.ndarray | None = None) -> None:
         self.spec = spec
         self.weights = torch.as_tensor(np.asarray(weights), dtype=torch.float64)
+        self.ent = None if ent is None else torch.as_tensor(np.asarray(ent), dtype=torch.float64)
         self.shots = shots
         self.qnode = make_qnode(spec, device, shots)
         self.log: list[dict] = []
@@ -68,7 +84,7 @@ class PennyLaneInteractionBackend:
         phi = torch.as_tensor(feats[..., 1])
         t0 = time.perf_counter()
         with torch.no_grad():
-            out = self.qnode(theta, phi, self.weights)
+            out = self.qnode(theta, phi, self.weights, self.ent)
         q = torch.stack([torch.as_tensor(o) for o in out], dim=-1).reshape(len(feats), -1).numpy()
         self.log.append({"batch": len(feats), "shots": self.shots,
                          "seconds": time.perf_counter() - t0, **resources(self.spec)})
@@ -79,7 +95,8 @@ def resources(spec: CircuitSpec) -> dict:
     """Gate counts, depth and measurement settings for one execution of the circuit."""
     theta = np.zeros(spec.n_items)
     tape = qml.workflow.construct_tape(make_qnode(spec))(
-        torch.as_tensor(theta), torch.as_tensor(theta), torch.zeros(spec.weight_shape, dtype=torch.float64)
+        torch.as_tensor(theta), torch.as_tensor(theta), torch.zeros(spec.weight_shape, dtype=torch.float64),
+        torch.zeros(spec.ent_shape, dtype=torch.float64),
     )
     level = [0] * spec.n_wires
     n_two = 0
@@ -96,7 +113,7 @@ def resources(spec: CircuitSpec) -> dict:
         "depth": max(level),
         "n_gates": len(tape.operations),
         "n_two_qubit_gates": n_two,
-        "n_trainable_params": int(np.prod(spec.weight_shape)),
+        "n_trainable_params": int(np.prod(spec.weight_shape)) + int(np.prod(spec.ent_shape)),
         "n_observables": len(obs),
         "measurement_settings": len(groups),
     }

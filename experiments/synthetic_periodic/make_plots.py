@@ -64,7 +64,9 @@ def label(tag: str) -> str:
     if base == "fused":
         return "MLP + gated quantum fusion"
     enc = "phase circuit + classical A·A products" if parts[1] == "phase" else parts[1]
-    return f"Quantum {enc} / {parts[2]} / D={parts[3]} / {parts[4]}"
+    topo = "learned RZZ" if parts[2] == "learned" else parts[2]
+    extra = f" / L1={parts[5].split('=')[1]}" if len(parts) > 5 else ""
+    return f"Quantum {enc} / {topo} / D={parts[3]} / {parts[4]}{extra}"
 
 
 def s1_section(lines: list[str]) -> None:
@@ -150,8 +152,8 @@ def s2_section(lines: list[str]) -> None:
               ("One qubit per period patch, hybrid encoding, readout restricted to single-qubit ⟨Z⟩, "
               "so cross-patch terms must come from CZ entanglers. Parameter count is identical across "
               "topologies (fixed CZ). Test MSE, mean ± std over 3 seeds."), ""]
-    fig, axes = plt.subplots(1, len(exps), figsize=(6.2 * len(exps), 4.4), sharey=True, squeeze=False)
-    topo = ["none", "local", "mismatched", "cross_period", "all_to_all"]
+    fig, axes = plt.subplots(1, len(exps), figsize=(6.8 * len(exps), 4.4), sharey=True, squeeze=False)
+    topo = ["none", "local", "mismatched", "cross_period", "all_to_all", "learned"]
     for ax, exp in zip(axes[0], exps):
         a = agg(load(exp))
         n = min({k[1] for k in a})
@@ -168,7 +170,7 @@ def s2_section(lines: list[str]) -> None:
         lines.append("")
         x = np.arange(len(topo))
         for j, depth in enumerate((1, 2)):
-            tags = [f"quantum-hybrid-{tp}-{depth}-z" for tp in topo]
+            tags = [f"quantum-hybrid-{tp}-{depth}-z" + ("-l1=0.0" if tp == "learned" else "") for tp in topo]
             m = [a[(t, n)]["mean"] if (t, n) in a else np.nan for t in tags]
             ax.bar(x + (j - 0.5) * 0.38, m, 0.36, color=SERIES[j], label=f"depth {depth} (mean)",
                    edgecolor=SURFACE, linewidth=2)
@@ -180,7 +182,8 @@ def s2_section(lines: list[str]) -> None:
         for ref, ls in (("fourier_mlp", "--"), ("explicit", ":")):
             if (ref, n) in a:
                 ax.axhline(a[(ref, n)]["mean"], color=INK2, lw=1.2, ls=ls, label=label(ref))
-        ax.set_xticks(x, ["none", "local\nchain", "mismatched\n(control)", "cross-\nperiod", "all-to-all"])
+        ax.set_xticks(x, ["none", "local\nchain", "mismatched\n(control)", "cross-\nperiod", "all-to-all",
+                          "learned\nRZZ"])
         ax.set_yscale("log")
         ax.set_ylim(top=3.0)
         ax.set_title(f"{nq}: entangling topology (Z readout)", loc="left")
@@ -189,7 +192,71 @@ def s2_section(lines: list[str]) -> None:
     fig.tight_layout()
     fig.savefig(FIG / "s2_topology.png", dpi=180)
     plt.close(fig)
-    lines += ["![S2](figures/s2_topology.png)", ""]
+    lines += ["![S2](figures/s2_topology.png)", "",
+              "Quantum models: best of 5 random restarts per seed (selected on validation MSE).", ""]
+    learned_section(lines, exps)
+
+
+BLUE_RAMP = ["#fcfcfb", "#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
+
+
+def learned_section(lines: list[str], exps: list[str]) -> None:
+    """Which edges does the learned (trainable RZZ) topology switch on?"""
+    from matplotlib.colors import LinearSegmentedColormap
+    from matplotlib.patches import Rectangle
+
+    cmap = LinearSegmentedColormap.from_list("blue", BLUE_RAMP)
+    panels = []
+    for exp in exps:
+        for r in load(exp):
+            if r["model"].get("topology") == "learned":
+                panels.append((exp, r))
+    if not panels:
+        return
+    lines += ["## Learned topology — does the circuit find the cross-period edges itself?", "",
+              ("Every qubit pair gets a trainable RZZ(γ); entangling strength = |sin γ| (0 = off, 1 = CZ-like). "
+              "Initial strengths are small (|γ| ≤ 0.3). *Target share* = fraction of total strength on the "
+              "pairs that enter the target."), "",
+              "| setting | seed | test MSE | target share | strengths (pair: value) |", "|---|---|---|---|---|"]
+    by_cfg = defaultdict(list)
+    for exp, r in panels:
+        nq = max(j for _, j in r["edges"]) + 1
+        target = {(k, k + nq // 2) for k in range(nq // 2)}
+        st = np.array(r["edge_strength"][0])
+        share = sum(v for (i, j), v in zip(r["edges"], st) if (i, j) in target) / max(st.sum(), 1e-12)
+        mat = np.zeros((nq, nq))
+        for (i, j), v in zip(r["edges"], st):
+            mat[i, j] = mat[j, i] = v
+        key = (exp.split("_")[-1], r["model"].get("l1", 0.0))
+        by_cfg[key].append((mat, target, nq))
+        pairs = ", ".join(f"{i}{j}:{v:.2f}" for (i, j), v in zip(r["edges"], st))
+        lines.append(f"| {key[0]}, L1={key[1]} | {r['seed']} | {r['test_mse']:.4f} | {share:.2f} | {pairs} |")
+    lines.append("")
+    keys = sorted(by_cfg)
+    fig, axes = plt.subplots(1, len(keys), figsize=(3.3 * len(keys), 3.4), squeeze=False)
+    for ax, key in zip(axes[0], keys):
+        mats = by_cfg[key]
+        mat, target, nq = np.mean([m for m, _, _ in mats], 0), mats[0][1], mats[0][2]
+        im = ax.imshow(mat, cmap=cmap, vmin=0, vmax=1)
+        for i in range(nq):
+            for j in range(nq):
+                if i != j:
+                    ax.text(j, i, f"{mat[i, j]:.2f}", ha="center", va="center", fontsize=7,
+                            color=SURFACE if mat[i, j] > 0.55 else INK)
+        for i, j in target:
+            for a_, b_ in ((i, j), (j, i)):
+                ax.add_patch(Rectangle((b_ - 0.5, a_ - 0.5), 1, 1, fill=False, ec="#eb6834", lw=2))
+        ax.set_xticks(range(nq))
+        ax.set_yticks(range(nq))
+        ax.grid(False)
+        ax.set_title(f"{key[0]}, L1={key[1]} (mean of {len(mats)} seeds)", loc="left", fontsize=9)
+        ax.set_xlabel("qubit (period patch)")
+    axes[0][0].set_ylabel("qubit (period patch)")
+    fig.colorbar(im, ax=axes[0].tolist(), shrink=0.8, label="entangling strength |sin γ|")
+    fig.text(0.01, 0.01, "orange boxes = pairs that enter the target (cross-period)", fontsize=8, color=INK2)
+    fig.savefig(FIG / "learned_topology.png", dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    lines += ["![learned topology](figures/learned_topology.png)", ""]
 
 
 def main() -> None:

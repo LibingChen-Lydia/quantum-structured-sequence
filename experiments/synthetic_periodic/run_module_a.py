@@ -32,8 +32,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def model_tag(m: dict) -> str:
-    keys = ("encoding", "topology", "depth", "readout")
-    parts = [m["name"]] + [f"{m[k]}" for k in keys if k in m]
+    keys = ("encoding", "topology", "depth", "readout", "l1")
+    parts = [m["name"]] + [f"l1={m[k]}" if k == "l1" else f"{m[k]}" for k in keys if k in m]
     return "-".join(parts)
 
 
@@ -61,8 +61,9 @@ def shots_eval(model: QuantumRegressor, test, shots_list, n_eval: int) -> dict:
     theta = np.arcsin(np.clip(amp / model.amp_max, 0, 1))
     out = {}
     for shots in shots_list:
+        ent = None if model.layer.ent is None else model.layer.ent.detach().numpy()
         backend = PennyLaneInteractionBackend(model.layer.spec, model.layer.weights.detach().numpy(),
-                                              shots=shots)
+                                              shots=shots, ent=ent)
         t0 = time.perf_counter()
         q = backend.run_interaction(np.stack([theta, phase], -1))
         secs = time.perf_counter() - t0
@@ -117,16 +118,34 @@ def run_job(job: dict) -> str:
         elif name == "matched_mlp":
             q_params = int(np.prod(spec.weight_shape)) + len(spec.observables()) + 1
             model, lr = MatchedMLP(n_items, q_params), tc.get("lr_classical", 0.01)
-        elif name == "quantum":
-            model = QuantumRegressor(QuantumInteractionLayer(spec, seed=seed), amp_max)
-            lr = tc.get("lr_quantum", 0.05)
-        elif name == "fused":
-            model = FusedForecaster(QuantumInteractionLayer(spec, seed=seed), amp_max)
-            lr = tc.get("lr_classical", 0.01)
+        elif name in ("quantum", "fused"):
+            model = None
         else:
             raise ValueError(name)
-        info = train(model, tr, va, seed=seed, lr=lr, epochs=tc.get("epochs", 300),
-                     batch=tc.get("batch", 128), patience=tc.get("patience", 30))
+        kw = {"epochs": tc.get("epochs", 300), "batch": tc.get("batch", 128),
+              "patience": tc.get("patience", 30)}
+        if model is not None:
+            info = train(model, tr, va, seed=seed, lr=lr, **kw)
+        else:
+            # quantum models: several random restarts, keep the best on validation (improvement 1)
+            restarts = m.get("restarts", tc.get("restarts", 1))
+            best, calls, val_per_restart = None, 0, []
+            for r in range(restarts):
+                init_seed = seed * 1000 + r
+                layer = QuantumInteractionLayer(spec, seed=init_seed)
+                if name == "quantum":
+                    cand, lr = QuantumRegressor(layer, amp_max), tc.get("lr_quantum", 0.05)
+                else:
+                    cand, lr = FusedForecaster(layer, amp_max), tc.get("lr_classical", 0.01)
+                cinfo = train(cand, tr, va, seed=init_seed, lr=lr, l1=m.get("l1", 0.0), **kw)
+                calls += layer.calls
+                val_per_restart.append(cinfo["best_val_mse"])
+                if best is None or cinfo["best_val_mse"] < best[1]["best_val_mse"]:
+                    best = (cand, cinfo, r)
+            model, info, chosen = best
+            info = {**info, "restarts": restarts, "chosen_restart": chosen,
+                    "val_mse_per_restart": val_per_restart}
+            model.layer.calls = calls
         pred_fn = lambda a, p: predict(model, a, p)
         rec.update(n_params=sum(p.numel() for p in model.parameters()), train_info=info)
         if name in ("quantum", "fused"):
@@ -136,6 +155,10 @@ def run_job(job: dict) -> str:
             rec["train_samples_through_circuit"] = model.layer.calls
             rec["train_circuit_executions"] = model.layer.calls * rec["resources"]["measurement_settings"]
             rec["circuit_executions_per_prediction"] = rec["resources"]["measurement_settings"]
+            if spec.learned:
+                rec["edges"] = spec.edges
+                rec["edge_strength"] = model.layer.edge_strength().tolist()
+                rec["ent_weights"] = model.layer.ent.detach().numpy().tolist()
             if name == "quantum" and cfg.get("shots_eval"):
                 rec["shots_eval"] = shots_eval(model, te, cfg["shots_eval"], cfg.get("shots_eval_n", 500))
                 rec["weights"] = model.layer.weights.detach().numpy().tolist()

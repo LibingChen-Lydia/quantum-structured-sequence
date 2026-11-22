@@ -73,3 +73,18 @@ def test_layer_is_seed_deterministic() -> None:
     a, b = QuantumInteractionLayer(spec, seed=3), QuantumInteractionLayer(spec, seed=3)
     x = torch.rand(4, 4, dtype=torch.float64)
     assert torch.allclose(a(x, x), b(x, x))
+
+
+def test_learned_topology_trains_edge_angles_and_backend_matches() -> None:
+    spec = CircuitSpec(4, "hybrid", "learned", depth=1, readout="z")
+    layer = QuantumInteractionLayer(spec, seed=1)
+    assert layer.ent.shape == (1, 6)
+    x = torch.rand(3, 4, dtype=torch.float64)
+    q = layer(x, x)
+    (q.sum() + layer.regularization(0.1)).backward()
+    assert layer.ent.grad is not None and torch.any(layer.ent.grad != 0)
+    backend = PennyLaneInteractionBackend(spec, layer.weights.detach().numpy(),
+                                          ent=layer.ent.detach().numpy())
+    out = backend.run_interaction(np.stack([x.numpy(), x.numpy()], -1))
+    assert np.allclose(out, q.detach().numpy(), atol=1e-10)
+    assert resources(spec)["n_trainable_params"] == 4 * 3 * 2 + 6
