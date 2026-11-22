@@ -1,0 +1,15 @@
+seed: 42
+task: delayed_patch_retrieval
+retrieval:
+  candidate_count: 32
+  top_k: 5
+  partitions: [recent, medium, long_term]
+  reranker: quantum_fidelity
+quantum:
+  backend: default.qubit
+  n_qubits: 4
+  encoding: angle
+  shots: null
+evaluation:
+  seeds: [42, 43, 44]
+  metrics: [recall_at_k, mrr, recall_latency_ms, rerank_latency_ms, quantum_calls]
