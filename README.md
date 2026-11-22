@@ -1,5 +1,7 @@
 # Quantum-Structured Sequence
 
+> 📑 **Presentation slides:** [**Q-Stride: Reading the Rhythm of Time with Quantum Circuits (PDF)**](docs/slides/Q-Stride_slides.pdf)
+
 Hybrid quantum–classical sequence modelling for the Infleqtion Hackathon, built around two independently testable modules:
 
 - **Module A — Structured Quantum Periodic Interaction:** encode amplitude, phase, frequency, and trend features from time-series patches; compare structured entanglement topologies.
