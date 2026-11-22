@@ -128,7 +128,7 @@ def claim(path: Path) -> bool:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", nargs="+", default=list(MODELS), choices=MODELS)
-    ap.add_argument("--datasets", nargs="+", default=list(DATASETS), choices=DATASETS)
+    ap.add_argument("--datasets", nargs="+", default=["ETTh1", "weather"], choices=DATASETS)
     ap.add_argument("--horizons", nargs="+", type=int, default=list(HORIZONS))
     ap.add_argument("--seeds", nargs="+", type=int, default=list(SEEDS))
     ap.add_argument("--device", default="cuda", choices=("cuda", "mps", "cpu"))
@@ -161,7 +161,7 @@ def main() -> None:
             continue  # another worker has it
         cmd = build(model, dataset, horizon, seed, a.device, a.epochs, a.num_workers)
         t0 = time.time()
-        proc = subprocess.run(cmd, cwd=TSL, env={**os.environ, "TSL_SEED": str(seed)}, text=True,
+        proc = subprocess.run(cmd, check=False, cwd=TSL, env={**os.environ, "TSL_SEED": str(seed)}, text=True,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         secs = time.time() - t0
         log = out_dir / "logs" / f"{path.stem}.log"
@@ -181,8 +181,8 @@ def main() -> None:
             import torch
             rec["torch"] = torch.__version__
             rec["gpu"] = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
-        except Exception:  # noqa: BLE001
-            pass
+        except ImportError:
+            rec["torch"] = None
         path.write_text(json.dumps(rec, indent=2))
         if not ok:
             path.with_suffix(".lock").unlink(missing_ok=True)  # let a restart retry it

@@ -30,8 +30,8 @@ grep -n "fix_seed = " "$TSL/run.py"
 
 # Datasets from TSL's official Hugging Face mirror (README: thuml/Time-Series-Library)
 base=https://huggingface.co/datasets/thuml/Time-Series-Library/resolve/main
-mkdir -p "$TSL/dataset/ETT-small" "$TSL/dataset/weather" "$TSL/dataset/traffic"
-for f in ETT-small/ETTh1.csv ETT-small/ETTm1.csv weather/weather.csv traffic/traffic.csv; do
+mkdir -p "$TSL/dataset/ETT-small" "$TSL/dataset/weather"
+for f in ${TSL_DATA:-ETT-small/ETTh1.csv weather/weather.csv}; do
   [[ -s $TSL/dataset/$f ]] || curl -fL --retry 3 -s "$base/$f" -o "$TSL/dataset/$f"
 done
 ls -la "$TSL"/dataset/*/

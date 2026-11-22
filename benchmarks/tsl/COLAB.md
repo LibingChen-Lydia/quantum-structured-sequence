@@ -27,7 +27,7 @@ from google.colab import userdata; import os; os.environ["GH_TOKEN"] = userdata.
 
 - pins Time-Series-Library at `4e938a1`;
 - patches `run.py` so `fix_seed` comes from `TSL_SEED`;
-- downloads ETTh1, ETTm1, Weather and Traffic from TSL's Hugging Face mirror.
+- downloads ETTh1 and Weather from TSL's Hugging Face mirror.
 
 It keeps Colab's own CUDA torch and does not reinstall it.
 
@@ -35,19 +35,18 @@ It keeps Colab's own CUDA torch and does not reinstall it.
 
 ```bash
 %cd /content/qss
-!bash benchmarks/tsl/colab_run_all.sh 1.6
+!bash benchmarks/tsl/colab_run_all.sh
 ```
 
-- **GPU, ETTh1, ETTm1 and Weather.** 6 workers share one job queue: 3 models × 4 horizons × seeds
-  2021–2023. Each worker claims the next free job through a lock file, so fast and slow jobs
-  balance automatically. Seed 2021 finishes everywhere before 2022 starts. Within a seed, the
-  longest jobs run first.
-- **GPU, Traffic.** 2 workers run Transformer and iTransformer (seed 2021, all horizons), and 1
-  worker runs PatchTST at H=96 only. TSL's PatchTST script uses batch size 4 on Traffic, which
-  makes it very slow.
-- **CPU, Traffic.** Module C runs seed 2021 with memory stride 2. This needs the High-RAM runtime.
-- **Time limit.** `1.6` means no new job starts after 1.6 hours. Jobs that are already running
-  finish. To stop immediately, run `!pkill -f run.py; pkill -f run_baselines.py; pkill -f run_module_c_tsl.py`.
+- **Scope.** ETTh1 and Weather, seeds 2021, 2022 and 2023.
+- **GPU.** 8 workers share one queue of 72 jobs (Transformer, iTransformer and PatchTST × 4
+  horizons × 3 seeds × 2 datasets). Each worker claims the next free job with a lock file. Seed
+  2021 finishes before 2022 starts, and within a seed the longest jobs run first.
+- **CPU.** Module C runs 24 jobs (2 datasets × 4 horizons × 3 seeds) on 3 parallel workers.
+- **Time limit.** No new GPU job starts after 1.2 hours; jobs that are already running finish.
+  To stop immediately, run
+  `!pkill -f run_baselines.py; pkill -f run.py; pkill -f run_module_c`.
+- **Expected time.** About 40–60 minutes. This is an estimate, not yet measured on an A100.
 
 **3. Check progress (re-run whenever you like)**
 
@@ -75,7 +74,5 @@ you can: the Colab disk is wiped when the runtime is recycled.
 ## Notes
 
 - Hyper-parameters come from TSL's `scripts/long_term_forecast/*.sh`, parsed per horizon.
-- TSL has no iTransformer ETTh1/ETTm1 script, so its ETTh2 script is used (d_model = d_ff = 128,
+- TSL has no iTransformer ETTh1 script, so its ETTh2 script is used (d_model = d_ff = 128,
   e_layers = 2). Each record stores this in `script_source`.
-- PatchTST on Traffic uses TSL's batch size 4 and is the slowest job. If Traffic does not finish,
-  it is reported as incomplete; numbers from papers are never used to fill it.

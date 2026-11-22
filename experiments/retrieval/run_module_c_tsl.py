@@ -22,11 +22,11 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from run_etth1_module_c import evaluate, train_forecast_head, train_retriever, window_features  # noqa: E402
+from run_etth1_module_c import evaluate, train_forecast_head, train_retriever, window_features
 
-from qss.classical import StructuredEncoderConfig, StructuredSequenceEncoder  # noqa: E402
-from qss.data.tsl_adapter import DATASETS, load_tsl  # noqa: E402
-from qss.retrieval import QuantumMemoryBank, TaskAwareRetriever  # noqa: E402
+from qss.classical import StructuredEncoderConfig, StructuredSequenceEncoder
+from qss.data.tsl_adapter import DATASETS, load_tsl
+from qss.retrieval import QuantumMemoryBank, TaskAwareRetriever
 
 ROOT = Path(__file__).resolve().parents[2]
 RERANKERS = ("cosine", "learned_metric", "quantum_fidelity")

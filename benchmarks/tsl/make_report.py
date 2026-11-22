@@ -23,7 +23,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "outputs" / "benchmark"
 DOCS = ROOT / "docs"
-DATASETS = ("ETTh1", "ETTm1", "weather", "traffic")
+DATASETS = ("ETTh1", "weather")
 HORIZONS = (96, 192, 336, 720)
 METHODS = ("Transformer", "iTransformer", "PatchTST",
            "Module C (quantum fidelity)", "Module C (cosine)", "Module C (learned metric)")

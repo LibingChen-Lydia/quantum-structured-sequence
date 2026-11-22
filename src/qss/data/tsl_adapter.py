@@ -47,7 +47,7 @@ def tsl_dataset(name: str, split: str, seq_len: int = 96, label_len: int = 48, p
     troot = tsl_root(root)
     if str(troot) not in sys.path:
         sys.path.insert(0, str(troot))
-    from data_provider import data_loader  # noqa: PLC0415  (TSL's own module)
+    from data_provider import data_loader
 
     cls = getattr(data_loader, loader)
     args = SimpleNamespace(augmentation_ratio=0)
