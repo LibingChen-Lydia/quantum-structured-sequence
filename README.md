@@ -14,6 +14,23 @@ sequence → patch/period feature extractor ─┬→ Module A quantum interacti
                                            └→ classical candidate recall → Module C quantum re-rank → retrieved context
 ```
 
+## Shared structured encoder
+
+`StructuredSequenceEncoder` is the shared upstream contract for both modules. It accepts
+`[batch, length, channels]` time series and returns scale-indexed Patch features, normalized
+retrieval embeddings, periodic amplitude/phase/frequency tensors, and Patch start indices.
+
+```python
+from qss.classical import StructuredEncoderConfig, StructuredSequenceEncoder
+
+encoder = StructuredSequenceEncoder(
+    StructuredEncoderConfig(patch_lengths=(24, 48, 96), period=24)
+)
+encoded = encoder.fit_transform(train_series)
+module_a_input = encoded.scales[48].amplitude, encoded.scales[48].phase
+module_c_input = encoded.scales[48].embedding
+```
+
 ## Repository layout
 
 ```text
