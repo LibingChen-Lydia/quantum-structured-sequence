@@ -74,6 +74,31 @@ Module-level execution details are in
 The shared A+C execution matrix and collaboration handoff are in
 [docs/experiment_plan.md](docs/experiment_plan.md).
 
+## Module A — how to run
+
+```bash
+pytest                                                                     # incl. analytic encoding check
+python experiments/synthetic_periodic/run_module_a.py --config configs/module_a_synthetic.yaml --quick  # 1-min smoke test
+python experiments/synthetic_periodic/run_module_a.py --config configs/module_a_s1.yaml     # S1 encoding comparison
+python experiments/synthetic_periodic/run_module_a.py --config configs/module_a_s2_4q.yaml  # S2 topology, 4 qubits
+python experiments/synthetic_periodic/run_module_a.py --config configs/module_a_s2_6q.yaml  # S2 topology, 6 qubits
+python experiments/synthetic_periodic/make_plots.py                                         # docs/results_module_a.md
+```
+
+Everything runs on CPU (PennyLane `default.qubit`, backprop through the exact state vector); no GPU
+is needed at 2–6 qubits. Runs are resumable: finished `(model, n_train, seed)` records are skipped.
+
+| piece | file |
+|---|---|
+| synthetic S1/S2 generators | `src/qss/classical/synthetic.py` |
+| amplitude/phase patch features (shared `StructuredSequenceEncoder`) | `src/qss/classical/encoder.py` |
+| classical controls (raw MLP, Fourier MLP, param-matched MLP, explicit interaction) | `src/qss/classical/baselines.py` |
+| encodings (angle / phase / hybrid), topologies (none / local / cross-period / all-to-all), re-uploading, readouts | `src/qss/quantum/circuits.py` |
+| trainable layer, `InteractionBackend` implementation (shots, any PennyLane device), resource counter | `src/qss/quantum/interaction.py` |
+| gated fusion `h + g ⊙ W_q q` | `src/qss/fusion/gated.py` |
+
+Results: [docs/module_a_findings.md](docs/module_a_findings.md) (summary) and [docs/results_module_a.md](docs/results_module_a.md) (all numbers).
+
 ## Module C — task-aware retrieval
 
 Module C learns a query/key memory space from structured Patch embeddings, using future-trajectory

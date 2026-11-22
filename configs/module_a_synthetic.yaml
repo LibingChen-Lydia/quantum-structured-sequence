@@ -1,13 +1,14 @@
+# Phase I smoke test: end-to-end sequence -> features -> quantum backend -> prediction.
+name: smoke
+task: s2
 seed: 42
-task: amplitude_phase_interaction
-quantum:
-  backend: default.qubit
-  n_qubits: 4
-  reupload_layers: 2
-  encoding: hybrid
-  topology: cross_period
-  shots: null
-evaluation:
-  seeds: [42, 43, 44]
-  metrics: [mse, mae, latency_ms, circuit_depth, quantum_calls]
-
+data: {n_patches: 4, period: 24, noise_x: 0.1, noise_y: 0.02, n_val: 256, n_test: 500}
+train_sizes: [512]
+seeds: [42, 43, 44]
+models:
+  - {name: quantum, encoding: hybrid, topology: cross_period, depth: 2, readout: z}
+  - {name: fourier_mlp}
+  - {name: explicit}
+train: {lr_quantum: 0.05, lr_classical: 0.01, epochs: 300, batch: 128, patience: 30}
+shots_eval: [1000]
+shots_eval_n: 200
