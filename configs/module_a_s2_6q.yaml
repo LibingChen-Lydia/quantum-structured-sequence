@@ -22,8 +22,13 @@ models:
   # control: same CZ count as cross_period, wrong pairing (2k, 2k+1)
   - {name: quantum, encoding: hybrid, topology: mismatched, depth: 1, readout: z}
   - {name: quantum, encoding: hybrid, topology: mismatched, depth: 2, readout: z}
+  # learned topology: trainable RZZ on every pair, optional L1 on entangling strength |sin(gamma)|
+  - {name: quantum, encoding: hybrid, topology: learned, depth: 1, readout: z, l1: 0.0}
+  - {name: quantum, encoding: hybrid, topology: learned, depth: 1, readout: z, l1: 0.003}
   # no entanglement but full two-body Pauli readout: trades CZ gates for measurement settings
-  - {name: quantum, encoding: hybrid, topology: none, depth: 1, readout: pauli2}
-train: {lr_quantum: 0.05, lr_classical: 0.01, epochs: 300, batch: 128, patience: 30}
+  # single restart: 33 observables make this reference ~20x slower per restart (time budget)
+  - {name: quantum, encoding: hybrid, topology: none, depth: 1, readout: pauli2, restarts: 1}
+# restarts: random re-initialisations per quantum model, best on validation is kept
+train: {lr_quantum: 0.05, lr_classical: 0.01, epochs: 300, batch: 128, patience: 30, restarts: 5}
 shots_eval: [1000]
 shots_eval_n: 500
