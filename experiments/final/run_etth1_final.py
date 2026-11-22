@@ -43,7 +43,9 @@ def train(model: StructuredRetrievalForecaster, base: np.ndarray, amp: np.ndarra
         bank = QuantumMemoryBank(model.retriever, cached_features, futures, end_times)
         rows = []
         for row in range(20, len(base)):
-            indices, _ = bank.index.query(cached_features[row], 20, before=end_times[row])
+            with torch.no_grad():
+                query_key = model.retriever.encode_query(torch.as_tensor(cached_features[row:row + 1])).numpy()[0]
+            indices, _ = bank.index.query(query_key, 20, before=end_times[row])
             rows.append((row, indices))
         rng.shuffle(rows)
         model.train()
