@@ -10,6 +10,12 @@ wandb/
 mlruns/
 outputs/
 checkpoints/
+results/logs/
+results/checkpoints/
+results/*.npy
+results/*.pkl
+dataset/
+Time-Series-Library/
 data/raw/*
 !data/raw/.gitkeep
 data/processed/*
