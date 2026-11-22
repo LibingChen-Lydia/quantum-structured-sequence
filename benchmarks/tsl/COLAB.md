@@ -31,32 +31,28 @@ from google.colab import userdata; import os; os.environ["GH_TOKEN"] = userdata.
 
 It keeps Colab's own CUDA torch and does not reinstall it.
 
-**2. Start 4 parallel workers on the one GPU (non-blocking)**
+**2. Launch everything in the background (one cell)**
 
 ```bash
 %cd /content/qss
-!mkdir -p logs
-# 3 shards share ETTh1 + ETTm1 + Weather, seed-first (all cells get seed 2021 before 2022 ...)
-!for i in 0 1 2; do nohup python benchmarks/tsl/run_baselines.py --device cuda --datasets ETTh1 ETTm1 weather --shard $i/3 --max-hours 1.8 > logs/shard$i.log 2>&1 & done
-# 1 worker for Traffic (862 variables, slow): seed 2021, horizons 96 and 720 first
-!nohup sh -c "python benchmarks/tsl/run_baselines.py --device cuda --datasets traffic --seeds 2021 --horizons 96 720 --max-hours 1.8 && python benchmarks/tsl/run_baselines.py --device cuda --datasets traffic --seeds 2021 --horizons 192 336 --max-hours 0.8" > logs/traffic.log 2>&1 &
+!bash benchmarks/tsl/colab_run_all.sh 1.6
 ```
 
-**2b. Module C on Traffic (CPU, needs the High-RAM runtime)**
-
-Traffic has 862 variables. At horizon 720 the memory bank alone is about 28 GB, so this part
-runs on Colab, not on a 16 GB laptop. It runs one seed, keeps every 2nd training window in the
-memory bank, and records `memory_stride` in each result.
-
-```bash
-%cd /content/qss
-!nohup sh -c 'for h in 96 192 336 720; do PYTHONPATH=src OMP_NUM_THREADS=4 python experiments/retrieval/run_module_c_tsl.py --dataset traffic --pred-len $h --seed 2021 --memory-stride 2; done' > logs/module_c_traffic.log 2>&1 &
-```
+- **GPU, ETTh1, ETTm1 and Weather.** 6 workers share one job queue: 3 models × 4 horizons × seeds
+  2021–2023. Each worker claims the next free job through a lock file, so fast and slow jobs
+  balance automatically. Seed 2021 finishes everywhere before 2022 starts. Within a seed, the
+  longest jobs run first.
+- **GPU, Traffic.** 2 workers run Transformer and iTransformer (seed 2021, all horizons), and 1
+  worker runs PatchTST at H=96 only. TSL's PatchTST script uses batch size 4 on Traffic, which
+  makes it very slow.
+- **CPU, Traffic.** Module C runs seed 2021 with memory stride 2. This needs the High-RAM runtime.
+- **Time limit.** `1.6` means no new job starts after 1.6 hours. Jobs that are already running
+  finish. To stop immediately, run `!pkill -f run.py; pkill -f run_baselines.py; pkill -f run_module_c_tsl.py`.
 
 **3. Check progress (re-run whenever you like)**
 
 ```bash
-!tail -n 3 /content/qss/logs/*.log; ls /content/qss/outputs/benchmark/tsl/runs/*.json | wc -l
+!tail -qn 1 /content/qss/logs/*.log; ls /content/qss/outputs/benchmark/tsl/runs/*.json | wc -l; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv
 ```
 
 **4. Hand back the results**
@@ -72,7 +68,7 @@ Put `tsl_runs.zip` in `~/Downloads`. `make_report.py` merges it with the local r
 
 ## If the session disconnects
 
-Re-run cells 1 and 2. Every finished `(model, dataset, horizon, seed)` has a JSON with
+Re-run cells 1 and 2 (the launcher clears stale locks). Every finished `(model, dataset, horizon, seed)` has a JSON with
 `"status": "OK"` and is skipped, so the run continues where it stopped. Download the zip first if
 you can: the Colab disk is wiped when the runtime is recycled.
 

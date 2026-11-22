@@ -6,11 +6,13 @@ per horizon), so nothing is re-tuned here. Only run-time settings are overridden
 TSL ships no iTransformer script for ETTh1/ETTm1; its ETTh2 script is used with the data swapped
 (recorded as ``script_source`` in every result).
 
-Jobs are ordered seed-first (every cell gets seed 2021 before any cell gets 2022), resumable,
-and can be sharded over parallel processes:
+Jobs are ordered seed-first (every cell gets seed 2021 before any cell gets 2022) and, within a
+seed, longest-first. Any number of worker processes can share one job list: each worker claims
+the next unclaimed job with an atomic lock file, so fast and slow jobs balance automatically.
+Finished jobs (JSON with status OK) are skipped, so a restart resumes.
 
-    python benchmarks/tsl/run_baselines.py --device cuda --shard 0/4 &
-    python benchmarks/tsl/run_baselines.py --device cuda --shard 1/4 &  ...
+    python benchmarks/tsl/run_baselines.py --device cuda --clear-locks   # once, before launching
+    for i in 0 1 2 3 4 5 6 7; do python benchmarks/tsl/run_baselines.py --device cuda & done
 """
 
 from __future__ import annotations
@@ -33,7 +35,7 @@ OUT = ROOT / "outputs" / "benchmark" / "tsl"
 MODELS = ("Transformer", "iTransformer", "PatchTST")
 DATASETS = ("ETTh1", "ETTm1", "weather", "traffic")
 HORIZONS = (96, 192, 336, 720)
-SEEDS = (2021, 2022, 2023, 2024, 2025)
+SEEDS = (2021, 2022, 2023)
 SCRIPT = {
     ("Transformer", "ETTh1"): "ETT_script/Transformer_ETTh1.sh",
     ("Transformer", "ETTm1"): "ETT_script/Transformer_ETTm1.sh",
@@ -79,7 +81,13 @@ def set_arg(args: list[str], key: str, value: str | None) -> list[str]:
     return args
 
 
-def build(model: str, dataset: str, horizon: int, seed: int, device: str, epochs: int | None) -> list[str]:
+# rough relative cost, used only to start the longest jobs first within a seed
+COST_DATA = {"traffic": 40, "weather": 6, "ETTm1": 5, "ETTh1": 1}
+COST_MODEL = {"PatchTST": 3, "Transformer": 2, "iTransformer": 1}
+
+
+def build(model: str, dataset: str, horizon: int, seed: int, device: str, epochs: int | None,
+          num_workers: int = 2) -> list[str]:
     rel = SCRIPT[(model, dataset)]
     args = parse_script(TSL / "scripts" / "long_term_forecast" / rel, model)[horizon]
     if dataset in DATA_SWAP:
@@ -89,7 +97,7 @@ def build(model: str, dataset: str, horizon: int, seed: int, device: str, epochs
     args = set_arg(args, "--root_path", str(TSL / "dataset" / folder) + "/")
     args = set_arg(args, "--model_id", f"{dataset}_96_{horizon}_s{seed}")
     args = set_arg(args, "--checkpoints", str(OUT / "checkpoints") + "/")
-    args = set_arg(args, "--num_workers", "2")
+    args = set_arg(args, "--num_workers", str(num_workers))
     args = set_arg(args, "--des", "qss-benchmark")
     if epochs is not None:
         args = set_arg(args, "--train_epochs", str(epochs))
@@ -101,14 +109,20 @@ def build(model: str, dataset: str, horizon: int, seed: int, device: str, epochs
 
 
 def jobs(a) -> list[tuple]:
-    out = []
-    for seed in a.seeds:  # seed-first ordering
-        for dataset in a.datasets:
-            for horizon in a.horizons:
-                for model in a.models:
-                    out.append((model, dataset, horizon, seed))
+    out = [(m, d, h, s) for s in a.seeds for d in a.datasets for h in a.horizons for m in a.models]
+    # seed-first, then longest-first (cost ~ data x model x horizon)
+    out.sort(key=lambda j: (a.seeds.index(j[3]), -COST_DATA[j[1]] * COST_MODEL[j[0]] * j[2]))
     i, n = map(int, a.shard.split("/"))
     return out[i::n]
+
+
+def claim(path: Path) -> bool:
+    """Atomically claim a job across processes (O_EXCL lock file)."""
+    try:
+        os.close(os.open(path.with_suffix(".lock"), os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+        return True
+    except FileExistsError:
+        return False
 
 
 def main() -> None:
@@ -122,9 +136,16 @@ def main() -> None:
     ap.add_argument("--shard", default="0/1", help="i/N: run every N-th job starting at i")
     ap.add_argument("--max-hours", type=float, default=None, help="stop starting new jobs after this")
     ap.add_argument("--tag", default="", help="output sub-folder, e.g. 'smoke'")
+    ap.add_argument("--num-workers", type=int, default=2, help="TSL DataLoader workers per job")
+    ap.add_argument("--clear-locks", action="store_true", help="remove stale claims and exit")
     a = ap.parse_args()
     out_dir = OUT / (a.tag or "runs")
     out_dir.mkdir(parents=True, exist_ok=True)
+    if a.clear_locks:
+        for lock in out_dir.glob("*.lock"):
+            lock.unlink()
+        print("locks cleared")
+        return
     t_start = time.time()
     todo = jobs(a)
     print(f"{len(todo)} jobs in shard {a.shard} -> {out_dir}", flush=True)
@@ -136,7 +157,9 @@ def main() -> None:
         if a.max_hours and time.time() - t_start > a.max_hours * 3600:
             print("max-hours reached, stopping", flush=True)
             break
-        cmd = build(model, dataset, horizon, seed, a.device, a.epochs)
+        if not claim(path):
+            continue  # another worker has it
+        cmd = build(model, dataset, horizon, seed, a.device, a.epochs, a.num_workers)
         t0 = time.time()
         proc = subprocess.run(cmd, cwd=TSL, env={**os.environ, "TSL_SEED": str(seed)}, text=True,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -161,6 +184,8 @@ def main() -> None:
         except Exception:  # noqa: BLE001
             pass
         path.write_text(json.dumps(rec, indent=2))
+        if not ok:
+            path.with_suffix(".lock").unlink(missing_ok=True)  # let a restart retry it
         print(f"[{k}/{len(todo)} {rec['status']}] {model} {dataset} H={horizon} s={seed} "
               f"mse={rec['mse']} mae={rec['mae']} {secs:.0f}s", flush=True)
 
