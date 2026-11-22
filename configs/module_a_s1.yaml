@@ -18,6 +18,10 @@ models:
   - {name: quantum, encoding: angle, topology: none, depth: 2, readout: pauli2}
   - {name: quantum, encoding: phase, topology: none, depth: 2, readout: pauli2}
   - {name: quantum, encoding: hybrid, topology: none, depth: 2, readout: pauli2}
+  # one re-uploading layer (D=1): checks whether D=2 hurts the hybrid encoding
+  - {name: quantum, encoding: hybrid, topology: all_to_all, depth: 1, readout: z}
+  - {name: quantum, encoding: hybrid, topology: none, depth: 1, readout: pauli2}
+  - {name: quantum, encoding: angle, topology: all_to_all, depth: 1, readout: z}
   # fixed (untrained) hybrid feature map + ridge readout, and gated fusion with an MLP
   - {name: quantum_fixed, encoding: hybrid, topology: none, depth: 1, readout: pauli2}
   - {name: fused, encoding: hybrid, topology: all_to_all, depth: 2, readout: z}

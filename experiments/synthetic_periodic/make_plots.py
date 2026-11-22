@@ -63,7 +63,8 @@ def label(tag: str) -> str:
     parts = tag.split("-")
     if base == "fused":
         return "MLP + gated quantum fusion"
-    return f"Quantum {parts[1]} / {parts[2]} / D={parts[3]} / {parts[4]}"
+    enc = "phase circuit + classical A·A products" if parts[1] == "phase" else parts[1]
+    return f"Quantum {enc} / {parts[2]} / D={parts[3]} / {parts[4]}"
 
 
 def s1_section(lines: list[str]) -> None:
@@ -90,23 +91,23 @@ def s1_section(lines: list[str]) -> None:
 
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), sharey=True)
     left = ["raw_mlp", "fourier_mlp", "matched_mlp-hybrid-all_to_all-2-z", "explicit",
-            "quantum-hybrid-all_to_all-2-z"]
+            "quantum-hybrid-none-1-pauli2"]
     for i, t in enumerate([t for t in left if t in tags]):
         m = np.array([a[(t, n)]["mean"] for n in sizes])
         s = np.array([a[(t, n)]["std"] for n in sizes])
         axes[0].plot(sizes, m, marker="o", ms=6, color=SERIES[i], label=label(t))
         axes[0].fill_between(sizes, np.maximum(m - s, 1e-6), m + s, color=SERIES[i], alpha=0.12, lw=0)
-    axes[0].set_title("Classical controls vs quantum (hybrid, Z readout)", loc="left")
-    enc_color = {"angle": SERIES[0], "phase": SERIES[1], "hybrid": SERIES[2]}
-    for t in tags:
-        p = t.split("-")
-        if p[0] != "quantum":
-            continue
-        m = [a[(t, n)]["mean"] for n in sizes]
-        axes[1].plot(sizes, m, marker="o", ms=6, color=enc_color[p[1]],
-                     ls="-" if p[4] == "z" else "--",
-                     label=f"{p[1]}, " + ("Z readout + CZ" if p[4] == "z" else "Pauli-2 readout, no CZ"))
-    axes[1].set_title("Quantum: encoding × readout", loc="left")
+    axes[0].set_title("Classical controls vs quantum (hybrid, D=1, Pauli-2)", loc="left")
+    right = [
+        ("quantum-hybrid-none-1-pauli2", "hybrid, D=1, Pauli-2 readout, no CZ", "-"),
+        ("quantum-hybrid-none-2-pauli2", "hybrid, D=2, Pauli-2 readout, no CZ", "--"),
+        ("quantum-hybrid-all_to_all-1-z", "hybrid, D=1, Z readout + CZ", ":"),
+        ("quantum-angle-all_to_all-2-z", "angle, D=2, Z readout + CZ (4 qubits)", "-"),
+    ]
+    for i, (t, lab, ls) in enumerate([r for r in right if r[0] in tags]):
+        med = [np.median([r["test_mse"] for r in a[(t, n)]["runs"]]) for n in sizes]
+        axes[1].plot(sizes, med, marker="o", ms=6, color=SERIES[[2, 2, 2, 0][i]], ls=ls, label=lab)
+    axes[1].set_title("Quantum variants (median over 3 seeds)", loc="left")
     for ax in axes:
         ax.set_xscale("log", base=2)
         ax.set_yscale("log")
@@ -149,36 +150,41 @@ def s2_section(lines: list[str]) -> None:
               ("One qubit per period patch, hybrid encoding, readout restricted to single-qubit ⟨Z⟩, "
               "so cross-patch terms must come from CZ entanglers. Parameter count is identical across "
               "topologies (fixed CZ). Test MSE, mean ± std over 3 seeds."), ""]
-    fig, axes = plt.subplots(1, len(exps), figsize=(5.6 * len(exps), 4.2), sharey=True, squeeze=False)
-    topo = ["none", "local", "cross_period", "all_to_all"]
+    fig, axes = plt.subplots(1, len(exps), figsize=(6.2 * len(exps), 4.4), sharey=True, squeeze=False)
+    topo = ["none", "local", "mismatched", "cross_period", "all_to_all"]
     for ax, exp in zip(axes[0], exps):
         a = agg(load(exp))
         n = min({k[1] for k in a})
         nq = exp.split("_")[-1]
-        lines += [f"### {nq}", "", "| model | depth | 2q gates | circuit depth | meas. settings | test MSE |",
-                  "|---|---|---|---|---|---|"]
+        lines += [f"### {nq}", "",
+                  "| model | depth | 2q gates | circuit depth | meas. settings | train MSE | test MSE |",
+                  "|---|---|---|---|---|---|---|"]
         for t in sorted({k[0] for k in a}, key=lambda t: a[(t, n)]["mean"]):
             res = a[(t, n)]["runs"][0].get("resources", {})
             d = t.split("-")[3] if t.startswith("quantum") else "–"
             lines.append(f"| {label(t)} | {d} | {res.get('n_two_qubit_gates', '–')} | {res.get('depth', '–')} | "
-                         f"{res.get('measurement_settings', '–')} | {fmt(a[(t, n)])} |")
+                         f"{res.get('measurement_settings', '–')} | "
+                         f"{np.mean([r['train_mse'] for r in a[(t, n)]['runs']]):.4f} | {fmt(a[(t, n)])} |")
         lines.append("")
         x = np.arange(len(topo))
         for j, depth in enumerate((1, 2)):
             tags = [f"quantum-hybrid-{tp}-{depth}-z" for tp in topo]
             m = [a[(t, n)]["mean"] if (t, n) in a else np.nan for t in tags]
-            s = [a[(t, n)]["std"] if (t, n) in a else 0 for t in tags]
-            ax.bar(x + (j - 0.5) * 0.38, m, 0.36, yerr=s, color=SERIES[j], label=f"depth {depth}",
-                   edgecolor=SURFACE, linewidth=2, error_kw={"ecolor": INK2, "lw": 1})
+            ax.bar(x + (j - 0.5) * 0.38, m, 0.36, color=SERIES[j], label=f"depth {depth} (mean)",
+                   edgecolor=SURFACE, linewidth=2)
+            for xi, t in zip(x, tags):
+                if (t, n) in a:
+                    pts = [r["test_mse"] for r in a[(t, n)]["runs"]]
+                    ax.scatter([xi + (j - 0.5) * 0.38] * len(pts), pts, s=14, color=INK, zorder=3,
+                               label="individual seeds" if (j, xi) == (0, 0) else None)
         for ref, ls in (("fourier_mlp", "--"), ("explicit", ":")):
             if (ref, n) in a:
-                ax.axhline(a[(ref, n)]["mean"], color=INK2, lw=1, ls=ls)
-                ax.text(len(topo) - 0.5, a[(ref, n)]["mean"] * 1.1, label(ref), color=INK2,
-                        fontsize=7, ha="right")
-        ax.set_xticks(x, ["none", "local", "cross-period", "all-to-all"])
+                ax.axhline(a[(ref, n)]["mean"], color=INK2, lw=1.2, ls=ls, label=label(ref))
+        ax.set_xticks(x, ["none", "local\nchain", "mismatched\n(control)", "cross-\nperiod", "all-to-all"])
         ax.set_yscale("log")
+        ax.set_ylim(top=3.0)
         ax.set_title(f"{nq}: entangling topology (Z readout)", loc="left")
-        ax.legend(frameon=False, fontsize=8)
+        ax.legend(frameon=False, fontsize=7.5, ncol=2, loc="upper left")
     axes[0][0].set_ylabel("test MSE (log)")
     fig.tight_layout()
     fig.savefig(FIG / "s2_topology.png", dpi=180)

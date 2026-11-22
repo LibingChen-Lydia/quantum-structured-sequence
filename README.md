@@ -73,7 +73,7 @@ is needed at 2–6 qubits. Runs are resumable: finished `(model, n_train, seed)`
 | trainable layer, `InteractionBackend` implementation (shots, any PennyLane device), resource counter | `src/qss/quantum/interaction.py` |
 | gated fusion `h + g ⊙ W_q q` | `src/qss/fusion/gated.py` |
 
-Results: [docs/results_module_a.md](docs/results_module_a.md).
+Results: [docs/module_a_findings.md](docs/module_a_findings.md) (summary) and [docs/results_module_a.md](docs/results_module_a.md) (all numbers).
 
 ## Status
 
