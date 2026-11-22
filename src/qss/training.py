@@ -1,4 +1,4 @@
-"""Shared training loop (Adam, MSE, early stopping on validation)."""
+"""Shared training loop (Adam, MSE or BCE-with-logits, early stopping on validation loss)."""
 
 from __future__ import annotations
 
@@ -23,8 +23,17 @@ def predict(model: nn.Module, amp: np.ndarray, phase: np.ndarray, batch: int = 2
     return np.concatenate(outs)
 
 
+def _loss(out: torch.Tensor, y: torch.Tensor, kind: str) -> torch.Tensor:
+    if kind == "bce":
+        return nn.functional.binary_cross_entropy_with_logits(out, y)
+    return torch.mean((out - y) ** 2)
+
+
 def train(model: nn.Module, train_set, val_set, *, seed: int, lr: float = 0.01, epochs: int = 300,
-          batch: int = 128, patience: int = 30, l1: float = 0.0) -> dict:
+          batch: int = 128, patience: int = 30, l1: float = 0.0, loss: str = "mse") -> dict:
+    """``loss="bce"`` treats the model output as a logit for 0/1 labels (classification)."""
+    if loss not in ("mse", "bce"):
+        raise ValueError(f"unknown loss {loss!r}")
     torch.manual_seed(seed)
     amp, phase, y = (_t(a) for a in train_set)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
@@ -38,12 +47,13 @@ def train(model: nn.Module, train_set, val_set, *, seed: int, lr: float = 0.01, 
         for i in range(0, n, batch):
             idx = perm[i:i + batch]
             opt.zero_grad()
-            loss = torch.mean((model(amp[idx], phase[idx]) - y[idx]) ** 2)
+            obj = _loss(model(amp[idx], phase[idx]), y[idx], loss)
             if l1 and hasattr(model, "layer"):
-                loss = loss + model.layer.regularization(l1)
-            loss.backward()
+                obj = obj + model.layer.regularization(l1)
+            obj.backward()
             opt.step()
-        val = float(np.mean((predict(model, val_set[0], val_set[1]) - val_set[2]) ** 2))
+        with torch.no_grad():
+            val = float(_loss(_t(predict(model, val_set[0], val_set[1])), _t(val_set[2]), loss))
         sched.step(val)
         history.append(val)
         if val < best - 1e-7:
@@ -53,5 +63,5 @@ def train(model: nn.Module, train_set, val_set, *, seed: int, lr: float = 0.01, 
             if bad >= patience:
                 break
     model.load_state_dict(best_state)
-    return {"best_val_mse": best, "epochs": epoch + 1, "train_seconds": time.perf_counter() - t0,
+    return {"best_val_loss": best, "loss": loss, "epochs": epoch + 1, "train_seconds": time.perf_counter() - t0,
             "val_curve": history}

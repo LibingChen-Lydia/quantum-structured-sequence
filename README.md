@@ -82,6 +82,7 @@ python experiments/synthetic_periodic/run_module_a.py --config configs/module_a_
 python experiments/synthetic_periodic/run_module_a.py --config configs/module_a_s1.yaml     # S1 encoding comparison
 python experiments/synthetic_periodic/run_module_a.py --config configs/module_a_s2_4q.yaml  # S2 topology, 4 qubits
 python experiments/synthetic_periodic/run_module_a.py --config configs/module_a_s2_6q.yaml  # S2 topology, 6 qubits
+python experiments/synthetic_periodic/run_module_a.py --config configs/module_a_s3_4q.yaml  # S3 classification (acc, macro-F1)
 python experiments/synthetic_periodic/make_plots.py                                         # docs/results_module_a.md
 ```
 
@@ -90,7 +91,7 @@ is needed at 2–6 qubits. Runs are resumable: finished `(model, n_train, seed)`
 
 | piece | file |
 |---|---|
-| synthetic S1/S2 generators | `src/qss/classical/synthetic.py` |
+| synthetic S1/S2/S3 generators | `src/qss/classical/synthetic.py` |
 | amplitude/phase patch features (shared `StructuredSequenceEncoder`) | `src/qss/classical/encoder.py` |
 | classical controls (raw MLP, Fourier MLP, param-matched MLP, explicit interaction) | `src/qss/classical/baselines.py` |
 | encodings (angle / phase / hybrid), topologies (none / local / cross-period / all-to-all), re-uploading, readouts | `src/qss/quantum/circuits.py` |

@@ -8,11 +8,16 @@ consecutive periods; patch k is A_k cos(w t + phi_k) + eps. The target couples
 patches at the same position of consecutive "super-periods" (stride = n_patches // 2):
     y = sum_k A_k A_{k+s} cos(phi_k - phi_{k+s}) + eta,  k = 0..s-1.
 With 4 patches this is A0A2cos(phi0-phi2) + A1A3cos(phi1-phi3).
+
+S3 (structured classification): the S2 series, labelled by the sign of the noisy S2 score,
+    label = 1[ sum_k A_k A_{k+s} cos(phi_k - phi_{k+s}) + eta > 0 ].
+Label 1 means "patches one super-period apart are, on balance, in phase". Classes are balanced
+by symmetry of the uniform phases.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -85,9 +90,20 @@ def make_s2(
     return SyntheticData(series, y, amp, phase, period, period, pairs, noise_y)
 
 
+def make_s3(n: int, seed: int, **kwargs) -> SyntheticData:
+    """Binary version of S2: same series, y in {0, 1} from the sign of the noisy S2 target."""
+    d = make_s2(n, seed, **kwargs)
+    return replace(d, y=(d.y > 0).astype(np.float64))
+
+
+CLASSIFICATION_TASKS = frozenset({"s3"})
+
+
 def make_task(task: str, n: int, seed: int, **kwargs) -> SyntheticData:
     if task == "s1":
         return make_s1(n, seed, **kwargs)
     if task == "s2":
         return make_s2(n, seed, **kwargs)
+    if task == "s3":
+        return make_s3(n, seed, **kwargs)
     raise ValueError(f"unknown task {task!r}")
