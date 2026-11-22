@@ -3,11 +3,13 @@
 All numbers are test MSE (mean over 3 seeds unless noted). They come from
 [results_module_a.md](results_module_a.md), which `make_plots.py` regenerates from the run
 records. Simulator: PennyLane `default.qubit`, exact expectations unless shots are stated.
+Features come from the shared `StructuredSequenceEncoder` (`qss.classical.encoder`), fitted on
+the training split only.
 
 ## What is built (M1)
 
-- An end-to-end pipeline: noisy series → DFT amplitude/phase patch features → quantum
-  interaction backend → prediction.
+- An end-to-end pipeline: noisy series → shared `StructuredSequenceEncoder` (amplitude/phase per
+  patch) → quantum interaction backend → prediction.
 - `PennyLaneInteractionBackend` implements the shared `InteractionBackend` protocol. It supports
   finite shots and any PennyLane device.
 - Every run logs qubits, circuit depth, two-qubit gates, measurement settings, circuit executions
@@ -17,18 +19,18 @@ records. Simulator: PennyLane `default.qubit`, exact expectations unless shots a
 
 - **The hybrid encoding RY(arcsin A)·RZ(φ) has the right inductive bias.**
   - 2 qubits, one re-uploading layer and a Pauli-2 readout reach the explicit-interaction oracle
-    at every training size: 0.0008 at n=64 and 0.0006 at n≥256.
+    at every training size: 0.0009 at n=64 and 0.0006 at n≥256.
   - Generic MLPs need about 4096 samples to get there. At n=64 they score 0.015 (raw) and
-    0.022 (Fourier).
+    0.017 (Fourier).
 - **The gain comes from the feature map, not from training or from anything uniquely quantum.**
   - An untrained random hybrid circuit with a ridge readout is just as good.
   - The reason is analytic: ⟨X1X2⟩ + ⟨Y1Y2⟩ = sinθ1·sinθ2·cos(φ1 − φ2) exactly (unit test
     `test_hybrid_encoding_gives_target_analytically`).
   - A classical model given the same features ([A·cos φ, A·sin φ] and their products) matches it.
-- **Angle encoding works but costs more.** It needs 4 qubits and 6–12 CZ gates, and reaches
-  0.0008–0.0012 at n≥256.
+- **Angle encoding works but costs more.** It needs 4 qubits and 12 CZ gates (D=2), and reaches
+  0.0010–0.0022 at n≥256.
 - **More re-uploading is not better here.**
-  - With hybrid encoding, D=2 gives 0.019–0.024, against 0.0006 for D=1.
+  - With hybrid encoding, D=2 gives 0.020–0.030, against 0.0006 for D=1.
   - A two-layer circuit does not contain the one-layer function. The second data upload rotates
     a state that is already data-dependent.
 - **Z-readout + CZ variants are seed-sensitive.** Some seeds get stuck in local minima, so the
@@ -36,7 +38,7 @@ records. Simulator: PennyLane `default.qubit`, exact expectations unless shots a
 - **The phase-only encoding row is not an encoding comparison.** Its head is given classical
   A_i·A_j products, so it is labelled separately.
 - **Gated fusion with an MLP backbone adds nothing measurable on S1.** It scores 0.0008 at
-  n=4096, the same as the MLPs.
+  n=4096, against 0.0006 for the MLPs.
 
 ## S2: cross-period interaction, `y = Σ A_k·A_{k+s}·cos(φ_k − φ_{k+s})`
 
@@ -44,10 +46,10 @@ Setup: one qubit per period patch, readout restricted to single-qubit ⟨Z⟩, a
 of trainable parameters for every topology.
 
 - **The cross-period topology is the only entangled circuit that learns the task.**
-  - 6 qubits, D=1: 0.0024, equal to the explicit oracle (0.0025) and 10–18× better than the MLPs
-    (0.026 raw, 0.043 Fourier).
-  - 4 qubits, D=1: two of three seeds reach 0.0018 (oracle 0.0018). One seed stopped early at
-    0.048.
+  - 6 qubits, D=1: 0.0024, equal to the explicit oracle (0.0025) and 10–23× better than the MLPs
+    (0.028 raw, 0.055 Fourier).
+  - 4 qubits, D=1: two of three seeds reach 0.0017 (oracle 0.0018). One seed stopped early at
+    0.090 (fixed by random restarts in the follow-up experiment branch).
 - **Structure matters, not gate count.**
   - The mismatched control has the same number of CZ gates as cross-period, but on the wrong
     pairs (0,1), (2,3), and so on.
@@ -61,7 +63,7 @@ of trainable parameters for every topology.
 
 | model | exact | 10 000 shots | 1000 shots | 100 shots |
 |---|---|---|---|---|
-| angle, Z readout + CZ | 0.0008 | 0.0011 | 0.0033 | 0.025 |
+| angle, Z readout + CZ | 0.0010 | 0.0014 | 0.0045 | 0.031 |
 
 Results for the other models are in the results file.
 
