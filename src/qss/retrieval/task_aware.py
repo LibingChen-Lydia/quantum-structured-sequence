@@ -105,7 +105,7 @@ class TemporalANNIndex:
         except ImportError:
             pass
 
-    def query(self, query: np.ndarray, candidate_count: int, before: int | float | None = None) -> tuple[np.ndarray, np.ndarray]:
+    def query(self, query: np.ndarray, candidate_count: int, before: float | None = None) -> tuple[np.ndarray, np.ndarray]:
         if not 1 <= candidate_count <= len(self.keys):
             raise ValueError("candidate_count must be between 1 and memory size")
         query = _l2_normalize(np.asarray(query, dtype=np.float32).reshape(1, -1))[0]
@@ -156,7 +156,7 @@ class QuantumMemoryBank:
         self.kernel = AngleFidelityKernel(n_qubits=retriever.quantum_dim)
 
     def retrieve(
-        self, query_features: np.ndarray, before: int | float, candidate_count: int = 20, top_k: int = 3,
+        self, query_features: np.ndarray, before: float, candidate_count: int = 20, top_k: int = 3,
         reranker: str = "quantum_fidelity",
     ) -> RetrievalBatch:
         if not 1 <= top_k <= candidate_count:
@@ -168,7 +168,6 @@ class QuantumMemoryBank:
         candidate_indices, classical_scores = self.index.query(
             query_key.numpy()[0], candidate_count, before=before
         )
-        candidate_keys = self.keys[candidate_indices]
         raw_query = _l2_normalize(np.asarray(query_features, dtype=np.float32).reshape(1, -1))[0]
         raw_scores = self.raw_keys[candidate_indices] @ raw_query
         if reranker == "cosine":

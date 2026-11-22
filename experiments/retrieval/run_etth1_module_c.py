@@ -18,7 +18,6 @@ from qss.classical import StructuredEncoderConfig, StructuredSequenceEncoder
 from qss.data import load_etth1
 from qss.retrieval import QuantumMemoryBank, TaskAwareForecastHead, TaskAwareRetriever
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 

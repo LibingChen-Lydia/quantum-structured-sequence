@@ -8,7 +8,6 @@ from pathlib import Path
 
 import numpy as np
 
-
 ETTH1_TRAIN_END = 12 * 30 * 24
 ETTH1_VAL_END = 16 * 30 * 24
 ETTH1_TEST_END = 20 * 30 * 24
@@ -64,9 +63,12 @@ def load_etth1(
     if seq_len != 96:
         raise ValueError("this benchmark protocol fixes seq_len=96")
     raw, names = _read_numeric_csv(Path(path))
-    mean = raw[:ETTH1_TRAIN_END].mean(axis=0)
-    std = np.maximum(raw[:ETTH1_TRAIN_END].std(axis=0), 1e-6)
-    normalized = (raw - mean) / std
+    # Accumulate statistics in float64: a float32 column-wise (axis=0) reduction over 8640 rows
+    # drifts (e.g. mean 4319.335 instead of 4319.5). Time-Series-Library's StandardScaler is float64.
+    train = raw[:ETTH1_TRAIN_END].astype(np.float64)
+    mean = train.mean(axis=0)
+    std = np.maximum(train.std(axis=0), 1e-6)
+    normalized = ((raw - mean) / std).astype(np.float32)
     borders = {
         "train": (0, ETTH1_TRAIN_END),
         "val": (ETTH1_TRAIN_END - seq_len, ETTH1_VAL_END),
