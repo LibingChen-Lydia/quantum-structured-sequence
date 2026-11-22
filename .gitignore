@@ -17,3 +17,6 @@ data/processed/*
 *.pt
 *.ckpt
 
+
+# Time-Series-Library checkout and data (benchmarks/tsl/setup.sh)
+third_party/
