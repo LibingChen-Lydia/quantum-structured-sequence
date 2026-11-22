@@ -8,7 +8,12 @@ Compare `none`, `local`, `cross_period`, and `all_to_all` entanglement topologie
 
 ## Module C: quantum-assisted retrieval
 
-Use a classical index to retrieve a fixed-size candidate set from recent, medium-term, and long-term memory partitions. Apply the same feature preprocessing for every re-ranker. Compare cosine, RBF, learned metric, and quantum fidelity scores. Report Recall@K, MRR, retrieval/re-ranking latency, quantum calls, and downstream forecasting error when context is fused.
+Use a task-aware continuous memory index to retrieve a fixed-size candidate set
+from historical windows. Apply the shared preprocessing and temporal cutoff to
+every re-ranker. Compare cosine, RBF, learned metric, and quantum fidelity
+scores. Report Recall@K, MRR, retrieval and re-ranking latency, quantum calls,
+and downstream forecasting error when context is fused. The shared data
+contract is specified in [benchmark_protocol.md](benchmark_protocol.md).
 
 ## Reproducibility
 

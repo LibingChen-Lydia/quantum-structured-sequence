@@ -65,7 +65,14 @@ pytest
 | A | Amplitude–phase and cross-period interactions | MLP, Fourier features, explicit interactions | MSE/MAE, accuracy, circuit resources |
 | C | Delayed historical-patch retrieval | cosine, RBF, learned metric | Recall@K, MRR, re-ranking latency |
 
-Every run must record seed, backend, qubit count, circuit depth, shots, quantum calls, and wall-clock time. See [docs/experiment_protocol.md](docs/experiment_protocol.md).
+Every run records seed, backend, qubit count, circuit depth, shots, quantum calls, and wall-clock time.
+The shared sequence-data contract is in [docs/benchmark_protocol.md](docs/benchmark_protocol.md): it
+defines the common sequence tensor, temporal splits, training-statistic
+normalization, timestamps, and Patch construction used by both modules.
+Module-level execution details are in
+[docs/experiment_protocol.md](docs/experiment_protocol.md).
+The shared A+C execution matrix and collaboration handoff are in
+[docs/experiment_plan.md](docs/experiment_plan.md).
 
 ## Module C — task-aware retrieval
 
