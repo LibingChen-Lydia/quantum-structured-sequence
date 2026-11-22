@@ -1,0 +1,30 @@
+# S2: cross-period interaction over 6 period patches (one qubit per patch, hybrid encoding).
+# y = sum_k A_k A_{k+s} cos(phi_k - phi_{k+s}),  s = 6/2.  Readout restricted to <Z_i>, so any
+# cross-patch interaction must be created by the entangling topology.
+name: s2_topology_6q
+task: s2
+data: {n_patches: 6, period: 24, noise_x: 0.1, noise_y: 0.02, n_val: 512, n_test: 2000}
+amp_max: 1.2
+train_sizes: [2048]
+seeds: [42, 43, 44]
+models:
+  - {name: raw_mlp}
+  - {name: fourier_mlp}
+  - {name: matched_mlp, encoding: hybrid, topology: cross_period, depth: 1, readout: z}
+  - {name: explicit}
+  - {name: quantum, encoding: hybrid, topology: none, depth: 1, readout: z}
+  - {name: quantum, encoding: hybrid, topology: local, depth: 1, readout: z}
+  - {name: quantum, encoding: hybrid, topology: cross_period, depth: 1, readout: z}
+  - {name: quantum, encoding: hybrid, topology: all_to_all, depth: 1, readout: z}
+  - {name: quantum, encoding: hybrid, topology: none, depth: 2, readout: z}
+  - {name: quantum, encoding: hybrid, topology: local, depth: 2, readout: z}
+  - {name: quantum, encoding: hybrid, topology: cross_period, depth: 2, readout: z}
+  - {name: quantum, encoding: hybrid, topology: all_to_all, depth: 2, readout: z}
+  # control: same CZ count as cross_period, wrong pairing (2k, 2k+1)
+  - {name: quantum, encoding: hybrid, topology: mismatched, depth: 1, readout: z}
+  - {name: quantum, encoding: hybrid, topology: mismatched, depth: 2, readout: z}
+  # no entanglement but full two-body Pauli readout: trades CZ gates for measurement settings
+  - {name: quantum, encoding: hybrid, topology: none, depth: 1, readout: pauli2}
+train: {lr_quantum: 0.05, lr_classical: 0.01, epochs: 300, batch: 128, patience: 30}
+shots_eval: [1000]
+shots_eval_n: 500

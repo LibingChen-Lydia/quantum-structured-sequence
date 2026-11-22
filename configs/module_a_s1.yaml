@@ -1,0 +1,26 @@
+# S1: amplitude-phase interaction, y = A1 A2 cos(phi1 - phi2). Encoding comparison x sample size.
+name: s1_encoding
+task: s1
+data: {channels: 2, period: 24, n_periods: 4, noise_x: 0.1, noise_y: 0.02, n_val: 512, n_test: 2000}
+amp_max: 1.2
+train_sizes: [64, 256, 1024, 4096]
+seeds: [42, 43, 44]
+models:
+  # classical controls
+  - {name: raw_mlp}
+  - {name: fourier_mlp}
+  - {name: matched_mlp, encoding: hybrid, topology: all_to_all, depth: 2, readout: z}
+  - {name: explicit}
+  # quantum: encoding x readout (2 items -> hybrid/phase use 2 qubits, angle uses 4)
+  - {name: quantum, encoding: angle, topology: all_to_all, depth: 2, readout: z}
+  - {name: quantum, encoding: phase, topology: all_to_all, depth: 2, readout: z}
+  - {name: quantum, encoding: hybrid, topology: all_to_all, depth: 2, readout: z}
+  - {name: quantum, encoding: angle, topology: none, depth: 2, readout: pauli2}
+  - {name: quantum, encoding: phase, topology: none, depth: 2, readout: pauli2}
+  - {name: quantum, encoding: hybrid, topology: none, depth: 2, readout: pauli2}
+  # fixed (untrained) hybrid feature map + ridge readout, and gated fusion with an MLP
+  - {name: quantum_fixed, encoding: hybrid, topology: none, depth: 1, readout: pauli2}
+  - {name: fused, encoding: hybrid, topology: all_to_all, depth: 2, readout: z}
+train: {lr_quantum: 0.05, lr_classical: 0.01, epochs: 300, batch: 128, patience: 30}
+shots_eval: [100, 1000, 10000]
+shots_eval_n: 500

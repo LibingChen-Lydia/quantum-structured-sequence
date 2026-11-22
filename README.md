@@ -50,6 +50,31 @@ pytest
 
 Every run must record seed, backend, qubit count, circuit depth, shots, quantum calls, and wall-clock time. See [docs/experiment_protocol.md](docs/experiment_protocol.md).
 
+## Module A — how to run
+
+```bash
+pytest                                                                     # incl. analytic encoding check
+python experiments/synthetic_periodic/run_module_a.py --config configs/module_a_synthetic.yaml --quick  # 1-min smoke test
+python experiments/synthetic_periodic/run_module_a.py --config configs/module_a_s1.yaml     # S1 encoding comparison
+python experiments/synthetic_periodic/run_module_a.py --config configs/module_a_s2_4q.yaml  # S2 topology, 4 qubits
+python experiments/synthetic_periodic/run_module_a.py --config configs/module_a_s2_6q.yaml  # S2 topology, 6 qubits
+python experiments/synthetic_periodic/make_plots.py                                         # docs/results_module_a.md
+```
+
+Everything runs on CPU (PennyLane `default.qubit`, backprop through the exact state vector); no GPU
+is needed at 2–6 qubits. Runs are resumable: finished `(model, n_train, seed)` records are skipped.
+
+| piece | file |
+|---|---|
+| synthetic S1/S2 generators | `src/qss/classical/synthetic.py` |
+| DFT amplitude/phase patch features | `src/qss/classical/patch_features.py` |
+| classical controls (raw MLP, Fourier MLP, param-matched MLP, explicit interaction) | `src/qss/classical/baselines.py` |
+| encodings (angle / phase / hybrid), topologies (none / local / cross-period / all-to-all), re-uploading, readouts | `src/qss/quantum/circuits.py` |
+| trainable layer, `InteractionBackend` implementation (shots, any PennyLane device), resource counter | `src/qss/quantum/interaction.py` |
+| gated fusion `h + g ⊙ W_q q` | `src/qss/fusion/gated.py` |
+
+Results: [docs/results_module_a.md](docs/results_module_a.md).
+
 ## Status
 
 Scaffolded for the Module A + C hackathon MVP. The next implementation milestones are:
