@@ -36,6 +36,19 @@ for larger memory banks.
 
 ## Evaluation
 
-Each reranker receives the same ANN candidate set. Compare cosine, RBF, learned metric, and quantum
-fidelity re-ranking with Recall@K, MRR, MSE, MAE, latency, quantum calls, and shots. Relevance labels
-for Recall@K and MRR are defined from the held-out future-trajectory similarity relation.
+Each reranker receives the same ANN candidate set. Cosine and RBF rank the original shared-encoder
+embedding; the learned metric ranks the task-aware key; quantum fidelity ranks the learned quantum
+projection. Compare them with Recall@K, MRR, MSE, MAE, latency, quantum calls, and shots. Relevance
+labels for Recall@K and MRR are defined from the held-out future-trajectory similarity relation.
+
+## ETTh1 benchmark protocol
+
+The first real-data benchmark follows Time-Series-Library's `Dataset_ETT_hour` protocol: multivariate
+ETTh1 (`M` setting), input length 96, prediction horizons 96 / 192 / 336 / 720, and the fixed first-12-
+months training, next-4-months validation, final-4-months test split. Training normalization is fit on the
+first 12 months only. Validation and test inputs include the preceding 96 observations, while every memory
+query accepts only windows whose input endpoint is earlier than its forecast start.
+
+```bash
+python experiments/retrieval/run_etth1_module_c.py --data data/raw/ETTh1.csv --pred-len 96
+```

@@ -27,6 +27,9 @@ def test_memory_retrieval_never_uses_future_windows() -> None:
     result = bank.retrieve(features[4], before=35, candidate_count=3, top_k=2)
     assert set(result.indices).issubset({0, 1, 2})
     assert result.futures.shape == (2, 2, 1)
+    for reranker in ("cosine", "rbf", "learned_metric", "quantum_fidelity"):
+        candidate = bank.retrieve(features[4], before=35, candidate_count=3, top_k=2, reranker=reranker)
+        assert set(candidate.indices).issubset({0, 1, 2})
 
 
 def test_attention_returns_a_weighted_future_context() -> None:

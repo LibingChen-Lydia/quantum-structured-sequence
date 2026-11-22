@@ -117,7 +117,9 @@ class TemporalANNIndex:
         allowed = np.arange(len(self.keys)) if before is None else np.flatnonzero(self.end_times < before)
         if len(allowed) < candidate_count:
             raise ValueError("not enough past memory items for candidate_count")
-        scores = self.keys[allowed] @ query
+        # ``einsum`` avoids spurious BLAS floating-point warnings on some CPU
+        # builds when the admissible history size crosses an implementation tile.
+        scores = np.einsum("nd,d->n", self.keys[allowed], query)
         order = np.argsort(-scores)[:candidate_count]
         return allowed[order], scores[order]
 
@@ -125,9 +127,11 @@ class TemporalANNIndex:
 @dataclass(frozen=True)
 class RetrievalBatch:
     indices: np.ndarray
+    candidate_indices: np.ndarray
     classical_scores: np.ndarray
     quantum_scores: np.ndarray
     futures: np.ndarray
+    candidate_futures: np.ndarray
 
 
 class QuantumMemoryBank:
@@ -146,12 +150,14 @@ class QuantumMemoryBank:
             keys = retriever.encode_key(feature_tensor)
             quantum_keys = retriever.encode_quantum(keys)
         self.keys = keys.numpy()
+        self.raw_keys = _l2_normalize(self.features)
         self.quantum_keys = quantum_keys.numpy()
         self.index = TemporalANNIndex(self.keys, end_times)
         self.kernel = AngleFidelityKernel(n_qubits=retriever.quantum_dim)
 
     def retrieve(
-        self, query_features: np.ndarray, before: int | float, candidate_count: int = 20, top_k: int = 3
+        self, query_features: np.ndarray, before: int | float, candidate_count: int = 20, top_k: int = 3,
+        reranker: str = "quantum_fidelity",
     ) -> RetrievalBatch:
         if not 1 <= top_k <= candidate_count:
             raise ValueError("top_k must be between 1 and candidate_count")
@@ -162,14 +168,31 @@ class QuantumMemoryBank:
         candidate_indices, classical_scores = self.index.query(
             query_key.numpy()[0], candidate_count, before=before
         )
-        quantum_scores = self.kernel.score_candidates(query_quantum.numpy()[0], self.quantum_keys[candidate_indices])
-        order = np.argsort(-quantum_scores)[:top_k]
+        candidate_keys = self.keys[candidate_indices]
+        raw_query = _l2_normalize(np.asarray(query_features, dtype=np.float32).reshape(1, -1))[0]
+        raw_scores = self.raw_keys[candidate_indices] @ raw_query
+        if reranker == "cosine":
+            rerank_scores = raw_scores
+        elif reranker == "learned_metric":
+            rerank_scores = classical_scores
+        elif reranker == "rbf":
+            squared_distance = np.sum((self.raw_keys[candidate_indices] - raw_query) ** 2, axis=1)
+            rerank_scores = np.exp(-squared_distance)
+        elif reranker == "quantum_fidelity":
+            rerank_scores = self.kernel.score_candidates(
+                query_quantum.numpy()[0], self.quantum_keys[candidate_indices]
+            )
+        else:
+            raise ValueError("reranker must be cosine, rbf, learned_metric, or quantum_fidelity")
+        order = np.argsort(-rerank_scores)[:top_k]
         selected = candidate_indices[order]
         return RetrievalBatch(
             indices=selected,
+            candidate_indices=candidate_indices,
             classical_scores=classical_scores[order],
-            quantum_scores=quantum_scores[order],
+            quantum_scores=rerank_scores[order],
             futures=self.futures[selected],
+            candidate_futures=self.futures[candidate_indices],
         )
 
 

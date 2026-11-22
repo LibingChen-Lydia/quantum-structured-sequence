@@ -74,6 +74,16 @@ similarity as contrastive training supervision. The memory bank uses ANN/HNSW ca
 quantum fidelity re-ranking, and attention fusion of retrieved future trajectories. The complete
 contract and temporal-validity rules are in [docs/module_c_task_aware_retrieval.md](docs/module_c_task_aware_retrieval.md).
 
+Run the ETTh1 long-term-forecast benchmark with `seq_len=96` and each standard horizon:
+
+```bash
+for horizon in 96 192 336 720; do
+  python experiments/retrieval/run_etth1_module_c.py --data data/raw/ETTh1.csv --pred-len "$horizon"
+done
+```
+
+The first ETTh1 results are recorded in [docs/results_module_c_etth1.md](docs/results_module_c_etth1.md).
+
 ## Status
 
 Scaffolded for the Module A + C hackathon MVP. The next implementation milestones are:

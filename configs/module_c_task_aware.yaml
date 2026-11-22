@@ -1,4 +1,11 @@
 seed: 42
+benchmark:
+  dataset: ETTh1
+  data_path: data/raw/ETTh1.csv
+  features: M
+  seq_len: 96
+  pred_lens: [96, 192, 336, 720]
+  split: "12 months train / 4 months validation / 4 months test"
 encoder:
   patch_lengths: [24, 48, 96]
   period: 24
