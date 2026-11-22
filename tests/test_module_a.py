@@ -2,16 +2,21 @@ import numpy as np
 import torch
 
 from qss.classical.baselines import ExplicitInteraction
-from qss.classical.patch_features import amp_phase_features, amp_to_theta
+from qss.classical.patch_features import amp_to_theta, encode_items
 from qss.classical.synthetic import make_s1, make_s2
 from qss.quantum.circuits import CircuitSpec, topology_edges
 from qss.quantum.interaction import PennyLaneInteractionBackend, QuantumInteractionLayer, resources
 
 
-def test_feature_extractor_recovers_amp_phase_without_noise() -> None:
+def test_shared_encoder_recovers_amp_phase_without_noise() -> None:
+    """Module A reads amplitude/phase from the shared StructuredSequenceEncoder."""
     for data in (make_s1(64, 0, noise_x=0.0), make_s2(64, 0, noise_x=0.0)):
-        amp, phase = amp_phase_features(data.series, data.period, data.patch_len)
-        assert np.allclose(amp, data.amp, atol=1e-3)
+        amp, phase, encoder = encode_items(data.series, data.series, data.period, data.patch_len)
+        # the encoder normalizes by the training input std; undo that per channel
+        std = encoder.transform(data.series[:1]).input_std
+        channels = data.series.shape[2]
+        scale = np.tile(std, amp.shape[1] // channels)
+        assert np.allclose(amp * scale, data.amp, atol=1e-3)
         assert np.allclose(np.angle(np.exp(1j * (phase - data.phase))), 0, atol=1e-3)
 
 

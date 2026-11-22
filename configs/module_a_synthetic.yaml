@@ -3,7 +3,6 @@ name: smoke
 task: s2
 seed: 42
 data: {n_patches: 4, period: 24, noise_x: 0.1, noise_y: 0.02, n_val: 256, n_test: 500}
-amp_max: 1.2
 train_sizes: [512]
 seeds: [42, 43, 44]
 models:

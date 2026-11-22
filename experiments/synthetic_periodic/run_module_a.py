@@ -19,7 +19,7 @@ import torch
 import yaml
 
 from qss.classical.baselines import ExplicitInteraction, FourierMLP, MatchedMLP, RawMLP
-from qss.classical.patch_features import amp_phase_features
+from qss.classical.patch_features import encode_items, fit_amp_max
 from qss.classical.synthetic import make_task
 from qss.evaluation.metrics import mae, mse
 from qss.evaluation.run_log import write_record
@@ -42,12 +42,15 @@ def load_data(cfg: dict, seed: int, n_train: int):
     n_val, n_test = d.pop("n_val", 512), d.pop("n_test", 2000)
     n_max = max(cfg["train_sizes"])
     data = make_task(cfg["task"], n_max + n_val + n_test, seed, **d)
-    amp, phase = amp_phase_features(data.series, data.period, data.patch_len)
-    y = data.y
     tr = slice(0, n_train)
     va = slice(n_max, n_max + n_val)
     te = slice(n_max + n_val, None)
-    return data, (amp[tr], phase[tr], y[tr]), (amp[va], phase[va], y[va]), (amp[te], phase[te], y[te])
+    # shared upstream encoder, fitted on the training split only
+    amp, phase, _ = encode_items(data.series[tr], data.series, data.period, data.patch_len)
+    amp_max = fit_amp_max(amp[tr])
+    y = data.y
+    return (data, (amp[tr], phase[tr], y[tr]), (amp[va], phase[va], y[va]),
+            (amp[te], phase[te], y[te]), amp_max)
 
 
 def spec_from(m: dict, n_items: int) -> CircuitSpec:
@@ -79,13 +82,14 @@ def run_job(job: dict) -> str:
     cfg, m, n_train, seed, out_path = job["cfg"], job["model"], job["n_train"], job["seed"], Path(job["out"])
     if out_path.exists():
         return f"skip {out_path.name}"
-    data, tr, va, te = load_data(cfg, seed, n_train)
+    data, tr, va, te, amp_max = load_data(cfg, seed, n_train)
     n_items = tr[0].shape[1]
     tc = cfg.get("train", {})
-    amp_max = cfg.get("amp_max", 1.2)
     rec = {"experiment": cfg["name"], "task": cfg["task"], "model": m, "tag": model_tag(m),
            "n_train": n_train, "seed": seed, "noise_floor_mse": data.noise_y ** 2,
-           "backend": "default.qubit", "shots_train": None}
+           "backend": "default.qubit", "shots_train": None,
+           "features": "qss.classical.encoder.StructuredSequenceEncoder (fit on train split)",
+           "amp_max": amp_max}
     t0 = time.perf_counter()
     name = m["name"]
     if name == "explicit":

@@ -14,6 +14,23 @@ sequence → patch/period feature extractor ─┬→ Module A quantum interacti
                                            └→ classical candidate recall → Module C quantum re-rank → retrieved context
 ```
 
+## Shared structured encoder
+
+`StructuredSequenceEncoder` is the shared upstream contract for both modules. It accepts
+`[batch, length, channels]` time series and returns scale-indexed Patch features, normalized
+retrieval embeddings, periodic amplitude/phase/frequency tensors, and Patch start indices.
+
+```python
+from qss.classical import StructuredEncoderConfig, StructuredSequenceEncoder
+
+encoder = StructuredSequenceEncoder(
+    StructuredEncoderConfig(patch_lengths=(24, 48, 96), period=24)
+)
+encoded = encoder.fit_transform(train_series)
+module_a_input = encoded.scales[48].amplitude, encoded.scales[48].phase
+module_c_input = encoded.scales[48].embedding
+```
+
 ## Repository layout
 
 ```text
@@ -67,13 +84,30 @@ is needed at 2–6 qubits. Runs are resumable: finished `(model, n_train, seed)`
 | piece | file |
 |---|---|
 | synthetic S1/S2 generators | `src/qss/classical/synthetic.py` |
-| DFT amplitude/phase patch features | `src/qss/classical/patch_features.py` |
+| amplitude/phase patch features (shared `StructuredSequenceEncoder`) | `src/qss/classical/encoder.py` |
 | classical controls (raw MLP, Fourier MLP, param-matched MLP, explicit interaction) | `src/qss/classical/baselines.py` |
 | encodings (angle / phase / hybrid), topologies (none / local / cross-period / all-to-all), re-uploading, readouts | `src/qss/quantum/circuits.py` |
 | trainable layer, `InteractionBackend` implementation (shots, any PennyLane device), resource counter | `src/qss/quantum/interaction.py` |
 | gated fusion `h + g ⊙ W_q q` | `src/qss/fusion/gated.py` |
 
 Results: [docs/module_a_findings.md](docs/module_a_findings.md) (summary) and [docs/results_module_a.md](docs/results_module_a.md) (all numbers).
+
+## Module C — task-aware retrieval
+
+Module C learns a query/key memory space from structured Patch embeddings, using future-trajectory
+similarity as contrastive training supervision. The memory bank uses ANN/HNSW candidate retrieval,
+quantum fidelity re-ranking, and attention fusion of retrieved future trajectories. The complete
+contract and temporal-validity rules are in [docs/module_c_task_aware_retrieval.md](docs/module_c_task_aware_retrieval.md).
+
+Run the ETTh1 long-term-forecast benchmark with `seq_len=96` and each standard horizon:
+
+```bash
+for horizon in 96 192 336 720; do
+  python experiments/retrieval/run_etth1_module_c.py --data data/raw/ETTh1.csv --pred-len "$horizon"
+done
+```
+
+The first ETTh1 results are recorded in [docs/results_module_c_etth1.md](docs/results_module_c_etth1.md).
 
 ## Status
 
