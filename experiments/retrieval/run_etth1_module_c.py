@@ -27,9 +27,10 @@ def window_features(encoder: StructuredSequenceEncoder, windows: np.ndarray, pat
     return encoder.transform(windows).scales[patch_length].embedding.mean(axis=1).astype(np.float32)
 
 
-def train_retriever(model: TaskAwareRetriever, features: np.ndarray, futures: np.ndarray, epochs: int, batch_size: int) -> None:
+def train_retriever(model: TaskAwareRetriever, features: np.ndarray, futures: np.ndarray, epochs: int, batch_size: int,
+                    seed: int = 2021) -> None:
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    rng = np.random.default_rng(2021)
+    rng = np.random.default_rng(seed)
     model.train()
     for _ in range(epochs):
         order = rng.permutation(len(features))
@@ -51,7 +52,7 @@ def candidates(bank: QuantumMemoryBank, features: np.ndarray, end_times: np.ndar
 
 def train_forecast_head(
     retriever: TaskAwareRetriever, bank: QuantumMemoryBank, features: np.ndarray, futures: np.ndarray,
-    end_times: np.ndarray, epochs: int, candidate_count: int,
+    end_times: np.ndarray, epochs: int, candidate_count: int, seed: int = 2021,
 ) -> TaskAwareForecastHead:
     for parameter in retriever.parameters():
         parameter.requires_grad_(False)
@@ -59,7 +60,7 @@ def train_forecast_head(
     head = TaskAwareForecastHead(retriever.embedding_dim, future_dim)
     optimizer = torch.optim.Adam(head.parameters(), lr=1e-4)
     rows = list(candidates(bank, features, end_times, candidate_count))
-    rng = np.random.default_rng(2021)
+    rng = np.random.default_rng(seed)
     head.train()
     for _ in range(epochs):
         rng.shuffle(rows)

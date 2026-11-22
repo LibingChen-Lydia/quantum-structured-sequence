@@ -42,6 +42,17 @@ It keeps Colab's own CUDA torch and does not reinstall it.
 !nohup sh -c "python benchmarks/tsl/run_baselines.py --device cuda --datasets traffic --seeds 2021 --horizons 96 720 --max-hours 1.8 && python benchmarks/tsl/run_baselines.py --device cuda --datasets traffic --seeds 2021 --horizons 192 336 --max-hours 0.8" > logs/traffic.log 2>&1 &
 ```
 
+**2b. Module C on Traffic (CPU, needs the High-RAM runtime)**
+
+Traffic has 862 variables. At horizon 720 the memory bank alone is about 28 GB, so this part
+runs on Colab, not on a 16 GB laptop. It runs one seed, keeps every 2nd training window in the
+memory bank, and records `memory_stride` in each result.
+
+```bash
+%cd /content/qss
+!nohup sh -c 'for h in 96 192 336 720; do PYTHONPATH=src OMP_NUM_THREADS=4 python experiments/retrieval/run_module_c_tsl.py --dataset traffic --pred-len $h --seed 2021 --memory-stride 2; done' > logs/module_c_traffic.log 2>&1 &
+```
+
 **3. Check progress (re-run whenever you like)**
 
 ```bash
@@ -53,7 +64,7 @@ It keeps Colab's own CUDA torch and does not reinstall it.
 The JSON files are small. Re-run this cell at any time; it zips whatever has finished.
 
 ```python
-!cd /content/qss && zip -qr tsl_runs.zip outputs/benchmark/tsl/runs/*.json outputs/benchmark/tsl/runs/logs
+!cd /content/qss && zip -qr tsl_runs.zip outputs/benchmark/tsl/runs/*.json outputs/benchmark/tsl/runs/logs outputs/benchmark/module_c/*.json
 from google.colab import files; files.download('/content/qss/tsl_runs.zip')
 ```
 
