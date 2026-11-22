@@ -166,7 +166,7 @@ class StructuredSequenceEncoder:
         centered_time = time - time.mean()
         slope = (patches * centered_time[None, None, :, None]).sum(axis=2) / np.sum(centered_time**2)
 
-        periodic_bin = max(1, int(round(patch_length / self.config.period)))
+        periodic_bin = max(1, round(patch_length / self.config.period))
         spectrum = np.fft.rfft(patches - mean[:, :, None, :], axis=2)
         periodic_bin = min(periodic_bin, spectrum.shape[2] - 1)
         coefficient = (2.0 / patch_length) * spectrum[:, :, periodic_bin, :]
