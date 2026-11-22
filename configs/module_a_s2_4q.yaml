@@ -4,7 +4,6 @@
 name: s2_topology_4q
 task: s2
 data: {n_patches: 4, period: 24, noise_x: 0.1, noise_y: 0.02, n_val: 512, n_test: 2000}
-amp_max: 1.2
 train_sizes: [2048]
 seeds: [42, 43, 44]
 models:
