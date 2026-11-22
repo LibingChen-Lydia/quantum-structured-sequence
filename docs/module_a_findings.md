@@ -14,6 +14,10 @@ the training split only.
   finite shots and any PennyLane device.
 - Every run logs qubits, circuit depth, two-qubit gates, measurement settings, circuit executions
   and wall-clock time.
+- Every run also records the shared-encoder configuration (patch lengths, period, stride), the
+  normalization mean and std fitted on the training split, the data settings and the split
+  boundaries, as `docs/benchmark_protocol.md` asks. Older S1/S2 records got this field through
+  `backfill_encoder_record.py`, which recomputes it deterministically.
 
 ## S1: amplitude–phase interaction, `y = A1·A2·cos(φ1 − φ2)`
 
@@ -84,6 +88,39 @@ strengths start small (|γ| ≤ 0.3), and the circuit is never told which pairs 
   - Use L1 = 0.
 - **What this means:** the cross-period structure is *discovered from data*, not imposed. This
   answers the main objection to the S2 result.
+
+## S3: structured classification (periodic pattern labels)
+
+This is the "structured classification" row of `docs/experiment_plan.md`.
+
+- **Setup.** The series are the S2 series with 4 period patches. The label is 1 if the noisy S2
+  score is positive, meaning patches one super-period apart are, on balance, in phase. The two
+  classes are balanced, so chance is 0.5.
+- **Training and metrics.** Models are trained with BCE-with-logits and evaluated by test
+  accuracy and macro-F1 (3 seeds).
+- **Readout.** The quantum models use a ⟨Z⟩ readout only.
+
+| model | acc n=256 | acc n=2048 |
+|---|---|---|
+| circuit, cross-period (2 CZ) | 0.961 | 0.974 |
+| circuit, learned RZZ | 0.952 | 0.971 |
+| explicit interaction (logistic) | 0.927 | 0.970 |
+| MLP on Fourier features | 0.784 | 0.920 |
+| MLP on raw (A, φ) | 0.720 | 0.906 |
+| circuit, local chain / all-to-all | 0.74 | 0.74 |
+| circuit, mismatched (2 CZ) / none | ≈ 0.50 | ≈ 0.50 |
+
+Macro-F1 equals accuracy to within 0.001 for every model above chance.
+
+- **The S2 conclusion carries over to classification.** The structure-matched circuit is best, and
+  it is already near its ceiling at 256 samples.
+- **The circuit beats the generic MLPs, and beats the explicit logistic oracle at small n.** At
+  2048 samples the oracle catches up. The gap at small n most likely reflects the oracle's larger
+  number of features (44), not any advantage of the circuit.
+- **Wrong structure gives chance.** The mismatched control has the same CZ count as cross-period
+  but sits at chance. Local and all-to-all partly mix the right pairs and plateau at 0.74.
+- **The learned topology again picks (0,2) and (1,3)** in all 6 runs, with 91–98% of the
+  entangling strength.
 
 ## Finite shots (S1, trained at n=4096)
 

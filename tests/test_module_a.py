@@ -1,11 +1,13 @@
 import numpy as np
 import torch
 
-from qss.classical.baselines import ExplicitInteraction
+from qss.classical.baselines import ExplicitInteraction, ExplicitInteractionClassifier
 from qss.classical.patch_features import amp_to_theta, encode_items
-from qss.classical.synthetic import make_s1, make_s2
+from qss.classical.synthetic import make_s1, make_s2, make_s3
+from qss.evaluation.metrics import classification_metrics
 from qss.quantum.circuits import CircuitSpec, topology_edges
 from qss.quantum.interaction import PennyLaneInteractionBackend, QuantumInteractionLayer, resources
+from qss.training import train
 
 
 def test_shared_encoder_recovers_amp_phase_without_noise() -> None:
@@ -93,3 +95,30 @@ def test_learned_topology_trains_edge_angles_and_backend_matches() -> None:
     out = backend.run_interaction(np.stack([x.numpy(), x.numpy()], -1))
     assert np.allclose(out, q.detach().numpy(), atol=1e-10)
     assert resources(spec)["n_trainable_params"] == 4 * 3 * 2 + 6
+
+
+def test_s3_labels_are_sign_of_s2_and_balanced() -> None:
+    d2, d3 = make_s2(4000, seed=3), make_s3(4000, seed=3)
+    np.testing.assert_array_equal(d3.series, d2.series)
+    np.testing.assert_array_equal(d3.y, (d2.y > 0).astype(float))
+    assert 0.45 < d3.y.mean() < 0.55
+
+
+def test_explicit_classifier_solves_s3_noise_free() -> None:
+    d = make_s3(3000, seed=0, noise_x=0.0, noise_y=0.0)
+    est = ExplicitInteractionClassifier().fit(d.amp[:2000], d.phase[:2000], d.y[:2000])
+    m = classification_metrics(d.y[2000:], est.predict(d.amp[2000:], d.phase[2000:]))
+    assert m["accuracy"] > 0.95 and m["macro_f1"] > 0.95
+
+
+def test_classification_metrics_and_bce_training() -> None:
+    m = classification_metrics(np.array([0, 1, 1, 0]), np.array([-2.0, 3.0, -1.0, -0.5]))
+    assert m["accuracy"] == 0.75 and 0 < m["bce"] < 1
+    d = make_s3(600, seed=1)
+    layer = QuantumInteractionLayer(CircuitSpec(4, "hybrid", "cross_period", 1, "z"), seed=0)
+    from qss.fusion.gated import QuantumRegressor
+    model = QuantumRegressor(layer, amp_max=1.05)
+    tr = (d.amp[:400], d.phase[:400], d.y[:400])
+    va = (d.amp[400:], d.phase[400:], d.y[400:])
+    info = train(model, tr, va, seed=0, lr=0.05, epochs=3, loss="bce")
+    assert info["loss"] == "bce" and np.isfinite(info["best_val_loss"])

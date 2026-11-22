@@ -1,0 +1,22 @@
+# S3: structured classification on the S2 series (4 period patches, one qubit per patch).
+# label = 1[ sum_k A_k A_{k+s} cos(phi_k - phi_{k+s}) + eta > 0 ], s = 2. Balanced classes.
+# Same comparison as S2 (topology at fixed parameter count, <Z> readout only) plus the
+# experiment_plan.md controls: classical MLP, Fourier-feature MLP, structured circuit.
+# Metrics: accuracy and macro-F1 (BCE-with-logits training, threshold 0).
+name: s3_classification_4q
+task: s3
+data: {n_patches: 4, period: 24, noise_x: 0.1, noise_y: 0.02, n_val: 512, n_test: 2000}
+train_sizes: [256, 2048]
+seeds: [42, 43, 44]
+models:
+  - {name: raw_mlp}
+  - {name: fourier_mlp}
+  - {name: matched_mlp, encoding: hybrid, topology: cross_period, depth: 1, readout: z}
+  - {name: explicit}
+  - {name: quantum, encoding: hybrid, topology: none, depth: 1, readout: z}
+  - {name: quantum, encoding: hybrid, topology: local, depth: 1, readout: z}
+  - {name: quantum, encoding: hybrid, topology: mismatched, depth: 1, readout: z}
+  - {name: quantum, encoding: hybrid, topology: cross_period, depth: 1, readout: z}
+  - {name: quantum, encoding: hybrid, topology: all_to_all, depth: 1, readout: z}
+  - {name: quantum, encoding: hybrid, topology: learned, depth: 1, readout: z, l1: 0.0}
+train: {lr_quantum: 0.05, lr_classical: 0.01, epochs: 300, batch: 128, patience: 30, restarts: 3}

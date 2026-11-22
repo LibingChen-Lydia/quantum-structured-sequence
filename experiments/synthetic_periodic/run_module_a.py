@@ -11,6 +11,7 @@ import itertools
 import json
 import os
 import time
+from dataclasses import asdict
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -18,10 +19,16 @@ import numpy as np
 import torch
 import yaml
 
-from qss.classical.baselines import ExplicitInteraction, FourierMLP, MatchedMLP, RawMLP
+from qss.classical.baselines import (
+    ExplicitInteraction,
+    ExplicitInteractionClassifier,
+    FourierMLP,
+    MatchedMLP,
+    RawMLP,
+)
 from qss.classical.patch_features import encode_items, fit_amp_max
-from qss.classical.synthetic import make_task
-from qss.evaluation.metrics import mae, mse
+from qss.classical.synthetic import CLASSIFICATION_TASKS, make_task
+from qss.evaluation.metrics import classification_metrics, mae, mse
 from qss.evaluation.run_log import write_record
 from qss.fusion.gated import FusedForecaster, QuantumRegressor, phase_head_features
 from qss.quantum.circuits import CircuitSpec
@@ -29,6 +36,7 @@ from qss.quantum.interaction import PennyLaneInteractionBackend, QuantumInteract
 from qss.training import predict, train
 
 ROOT = Path(__file__).resolve().parents[2]
+OUT_ROOT = ROOT / "outputs" / "module_a"
 
 
 def model_tag(m: dict) -> str:
@@ -46,11 +54,24 @@ def load_data(cfg: dict, seed: int, n_train: int):
     va = slice(n_max, n_max + n_val)
     te = slice(n_max + n_val, None)
     # shared upstream encoder, fitted on the training split only
-    amp, phase, _ = encode_items(data.series[tr], data.series, data.period, data.patch_len)
+    amp, phase, encoder = encode_items(data.series[tr], data.series, data.period, data.patch_len)
     amp_max = fit_amp_max(amp[tr])
     y = data.y
     return (data, (amp[tr], phase[tr], y[tr]), (amp[va], phase[va], y[va]),
-            (amp[te], phase[te], y[te]), amp_max)
+            (amp[te], phase[te], y[te]), amp_max, encoder_record(encoder, data, n_train, n_max, n_val))
+
+
+def encoder_record(encoder, data, n_train: int, n_max: int, n_val: int) -> dict:
+    """Shared-encoder configuration, fitted normalization and splits (benchmark_protocol.md)."""
+    return {"class": "qss.classical.encoder.StructuredSequenceEncoder",
+            "config": asdict(encoder.config),
+            "fit_on": "train split only",
+            "input_mean": np.asarray(encoder._input_mean).ravel().tolist(),
+            "input_std": np.asarray(encoder._input_std).ravel().tolist(),
+            "series_shape": list(data.series.shape[1:]),
+            "n_items": int(data.amp.shape[1]),
+            "splits": {"train": [0, n_train], "val": [n_max, n_max + n_val],
+                       "test": [n_max + n_val, len(data.series)]}}
 
 
 def spec_from(m: dict, n_items: int) -> CircuitSpec:
@@ -83,21 +104,25 @@ def run_job(job: dict) -> str:
     cfg, m, n_train, seed, out_path = job["cfg"], job["model"], job["n_train"], job["seed"], Path(job["out"])
     if out_path.exists():
         return f"skip {out_path.name}"
-    data, tr, va, te, amp_max = load_data(cfg, seed, n_train)
+    data, tr, va, te, amp_max, enc_rec = load_data(cfg, seed, n_train)
+    clf = cfg["task"] in CLASSIFICATION_TASKS
     n_items = tr[0].shape[1]
     tc = cfg.get("train", {})
     rec = {"experiment": cfg["name"], "task": cfg["task"], "model": m, "tag": model_tag(m),
            "n_train": n_train, "seed": seed, "noise_floor_mse": data.noise_y ** 2,
            "backend": "default.qubit", "shots_train": None,
            "features": "qss.classical.encoder.StructuredSequenceEncoder (fit on train split)",
-           "amp_max": amp_max}
+           "encoder": enc_rec, "data": cfg.get("data", {}),
+           "task_type": "classification" if clf else "regression", "amp_max": amp_max}
     t0 = time.perf_counter()
     name = m["name"]
     if name == "explicit":
-        est = ExplicitInteraction().fit(*tr)
+        est = (ExplicitInteractionClassifier() if clf else ExplicitInteraction()).fit(*tr)
         pred_fn = est.predict
         rec.update(n_params=est.n_params, train_info={})
     elif name == "quantum_fixed":
+        if clf:
+            raise ValueError("quantum_fixed is regression-only")
         # untrained random circuit, only a ridge readout is fit (reservoir / fixed feature map)
         from sklearn.linear_model import RidgeCV
         spec = spec_from(m, n_items)
@@ -127,7 +152,7 @@ def run_job(job: dict) -> str:
         else:
             raise ValueError(name)
         kw = {"epochs": tc.get("epochs", 300), "batch": tc.get("batch", 128),
-              "patience": tc.get("patience", 30)}
+              "patience": tc.get("patience", 30), "loss": "bce" if clf else "mse"}
         if model is not None:
             info = train(model, tr, va, seed=seed, lr=lr, **kw)
         else:
@@ -143,12 +168,12 @@ def run_job(job: dict) -> str:
                     cand, lr = FusedForecaster(layer, amp_max), tc.get("lr_classical", 0.01)
                 cinfo = train(cand, tr, va, seed=init_seed, lr=lr, l1=m.get("l1", 0.0), **kw)
                 calls += layer.calls
-                val_per_restart.append(cinfo["best_val_mse"])
-                if best is None or cinfo["best_val_mse"] < best[1]["best_val_mse"]:
+                val_per_restart.append(cinfo["best_val_loss"])
+                if best is None or cinfo["best_val_loss"] < best[1]["best_val_loss"]:
                     best = (cand, cinfo, r)
             model, info, chosen = best
             info = {**info, "restarts": restarts, "chosen_restart": chosen,
-                    "val_mse_per_restart": val_per_restart}
+                    "val_loss_per_restart": val_per_restart}
             model.layer.calls = calls
         pred_fn = lambda a, p: predict(model, a, p)
         rec.update(n_params=sum(p.numel() for p in model.parameters()), train_info=info)
@@ -163,17 +188,25 @@ def run_job(job: dict) -> str:
                 rec["edges"] = spec.edges
                 rec["edge_strength"] = model.layer.edge_strength().tolist()
                 rec["ent_weights"] = model.layer.ent.detach().numpy().tolist()
-            if name == "quantum" and cfg.get("shots_eval"):
+            if name == "quantum" and cfg.get("shots_eval") and not clf:
                 rec["shots_eval"] = shots_eval(model, te, cfg["shots_eval"], cfg.get("shots_eval_n", 500))
                 rec["weights"] = model.layer.weights.detach().numpy().tolist()
     rec["wall_seconds"] = time.perf_counter() - t0
     t1 = time.perf_counter()
     p_te = pred_fn(te[0], te[1])
     rec["inference_seconds_per_sample"] = (time.perf_counter() - t1) / len(te[2])
-    rec.update(test_mse=mse(te[2], p_te), test_mae=mae(te[2], p_te),
-               train_mse=mse(tr[2], pred_fn(tr[0], tr[1])))
+    if clf:
+        m_te = classification_metrics(te[2], p_te)
+        m_tr = classification_metrics(tr[2], pred_fn(tr[0], tr[1]))
+        rec.update(test_accuracy=m_te["accuracy"], test_macro_f1=m_te["macro_f1"], test_bce=m_te["bce"],
+                   train_accuracy=m_tr["accuracy"])
+        summary = f"acc={rec['test_accuracy']:.4f} f1={rec['test_macro_f1']:.4f}"
+    else:
+        rec.update(test_mse=mse(te[2], p_te), test_mae=mae(te[2], p_te),
+                   train_mse=mse(tr[2], pred_fn(tr[0], tr[1])))
+        summary = f"test_mse={rec['test_mse']:.5f}"
     write_record(out_path, rec)
-    return f"done {out_path.name}  test_mse={rec['test_mse']:.5f}  {rec['wall_seconds']:.0f}s"
+    return f"done {out_path.name}  {summary}  {rec['wall_seconds']:.0f}s"
 
 
 def main() -> None:
@@ -188,7 +221,7 @@ def main() -> None:
         cfg["seeds"], cfg["train_sizes"] = cfg["seeds"][:1], cfg["train_sizes"][:1]
         cfg.setdefault("train", {})["epochs"] = 20
         cfg["name"] = cfg["name"] + "_quick"
-    out_dir = ROOT / "outputs" / "module_a" / cfg["name"]
+    out_dir = OUT_ROOT / cfg["name"]
     jobs = []
     for m, n, s in itertools.product(cfg["models"], cfg["train_sizes"], cfg["seeds"]):
         if args.only and args.only not in model_tag(m):

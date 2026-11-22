@@ -259,6 +259,73 @@ def learned_section(lines: list[str], exps: list[str]) -> None:
     lines += ["![learned topology](figures/learned_topology.png)", ""]
 
 
+S3_LABEL = {"explicit": "Explicit interaction (logistic)"}
+
+
+def s3_section(lines: list[str]) -> None:
+    exp = "s3_classification_4q"
+    runs = load(exp) if (OUT / exp).exists() else []
+    if not runs:
+        return
+    acc = agg(runs, key=lambda r: r["test_accuracy"])
+    f1 = agg(runs, key=lambda r: r["test_macro_f1"])
+    sizes = sorted({k[1] for k in acc})
+    tags = sorted({k[0] for k in acc}, key=lambda t: -acc[(t, sizes[-1])]["mean"])
+    lab = lambda t: S3_LABEL.get(t, label(t))
+    lines += ["## S3 — structured classification (periodic pattern labels)", "",
+              ("Same series as S2 with 4 period patches; label = 1 if the noisy S2 score "
+               "Σ A_k·A_{k+2}·cos(φ_k − φ_{k+2}) is positive (patches one super-period apart are on "
+               "balance in phase). Balanced classes, chance = 0.5. BCE-with-logits training, threshold 0; "
+               "quantum models use ⟨Z⟩ readout only, best of 3 restarts on validation BCE. "
+               "Test accuracy and macro-F1, mean ± std over 3 seeds."), "",
+              "| model | 2q gates | " + " | ".join(f"acc n={n} | macro-F1 n={n}" for n in sizes) + " |",
+              "|---|---|" + "---|---|" * len(sizes)]
+    for t in tags:
+        res = acc[(t, sizes[-1])]["runs"][0].get("resources", {})
+        cells = " | ".join(f"{fmt(acc[(t, n)])} | {fmt(f1[(t, n)])}" if (t, n) in acc else "– | –"
+                           for n in sizes)
+        lines.append(f"| {lab(t)} | {res.get('n_two_qubit_gates', '–')} | {cells} |")
+    lines.append("")
+    fig, axes = plt.subplots(1, len(sizes), figsize=(6.2 * len(sizes), 4.2), sharey=True, squeeze=False)
+    for ax, n in zip(axes[0], sizes):
+        order = [t for t in tags if (t, n) in acc]
+        x = np.arange(len(order))
+        col = [SERIES[0] if t.startswith("quantum") else SERIES[1] for t in order]
+        ax.bar(x, [acc[(t, n)]["mean"] for t in order], 0.62, color=col, edgecolor=SURFACE, linewidth=2)
+        for xi, t in zip(x, order):
+            pts = [r["test_accuracy"] for r in acc[(t, n)]["runs"]]
+            ax.scatter([xi] * len(pts), pts, s=14, color=INK, zorder=3)
+        ax.axhline(0.5, color=INK2, lw=1.2, ls=":")
+        ax.text(len(order) - 0.5, 0.505, "chance", color=INK2, fontsize=8, ha="right", va="bottom")
+        short = [("circuit: " + t.split("-")[2].replace("_", "-")) if t.startswith("quantum") else lab(t)
+                 for t in order]
+        ax.set_xticks(x, short, rotation=35, ha="right", fontsize=8)
+        ax.set_ylim(0.4, 1.0)
+        ax.grid(axis="x", visible=False)
+        ax.set_axisbelow(True)
+        ax.set_title(f"S3 test accuracy, n_train = {n}", loc="left")
+    axes[0][0].set_ylabel("test accuracy")
+    from matplotlib.patches import Patch
+    axes[0][-1].legend(handles=[Patch(color=SERIES[0], label="quantum circuit"),
+                                Patch(color=SERIES[1], label="classical control"),
+                                plt.Line2D([], [], marker="o", ls="", color=INK, ms=4, label="individual seeds")],
+                       frameon=False, fontsize=8, loc="upper right")
+    fig.tight_layout()
+    fig.savefig(FIG / "s3_classification.png", dpi=180)
+    plt.close(fig)
+    lines += ["![S3](figures/s3_classification.png)", ""]
+    learned = [r for r in runs if r.get("edges")]
+    if learned:
+        shares = []
+        for r in learned:
+            st = np.asarray(r["edge_strength"]).reshape(-1, len(r["edges"])).sum(0)
+            tgt = [i for i, e in enumerate(r["edges"]) if tuple(e) in {(0, 2), (1, 3)}]
+            shares.append(st[tgt].sum() / st.sum())
+        lines += [(f"Learned RZZ topology: the target edges (0,2) and (1,3) carry "
+                   f"{100 * min(shares):.0f}–{100 * max(shares):.0f}% of the total entangling strength "
+                   f"in all {len(learned)} runs, as in S2."), ""]
+
+
 def main() -> None:
     FIG.mkdir(parents=True, exist_ok=True)
     lines = ["# Module A results — Structured Quantum Periodic Interaction", "",
@@ -266,6 +333,7 @@ def main() -> None:
              "`outputs/module_a/` (simulator: PennyLane `default.qubit`, exact expectations unless noted)."), ""]
     s1_section(lines)
     s2_section(lines)
+    s3_section(lines)
     (DOCS / "results_module_a.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
 

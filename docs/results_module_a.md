@@ -113,3 +113,24 @@ Every qubit pair gets a trainable RZZ(γ); entangling strength = |sin γ| (0 = o
 
 ![learned topology](figures/learned_topology.png)
 
+## S3 — structured classification (periodic pattern labels)
+
+Same series as S2 with 4 period patches; label = 1 if the noisy S2 score Σ A_k·A_{k+2}·cos(φ_k − φ_{k+2}) is positive (patches one super-period apart are on balance in phase). Balanced classes, chance = 0.5. BCE-with-logits training, threshold 0; quantum models use ⟨Z⟩ readout only, best of 3 restarts on validation BCE. Test accuracy and macro-F1, mean ± std over 3 seeds.
+
+| model | 2q gates | acc n=256 | macro-F1 n=256 | acc n=2048 | macro-F1 n=2048 |
+|---|---|---|---|---|---|
+| Quantum hybrid / cross_period / D=1 / z | 2 | 0.9610 ± 0.0032 | 0.9610 ± 0.0032 | 0.9735 ± 0.0025 | 0.9735 ± 0.0025 |
+| Quantum hybrid / learned RZZ / D=1 / z / L1=0.0 | 6 | 0.9518 ± 0.0069 | 0.9518 ± 0.0069 | 0.9710 ± 0.0033 | 0.9710 ± 0.0033 |
+| Explicit interaction (logistic) | – | 0.9273 ± 0.0091 | 0.9273 ± 0.0091 | 0.9698 ± 0.0052 | 0.9698 ± 0.0052 |
+| MLP on Fourier (A, cos φ, sin φ) | – | 0.7835 ± 0.0226 | 0.7833 ± 0.0228 | 0.9202 ± 0.0083 | 0.9201 ± 0.0083 |
+| MLP on raw (A, φ) | – | 0.7198 ± 0.0513 | 0.7192 ± 0.0516 | 0.9055 ± 0.0012 | 0.9054 ± 0.0012 |
+| Quantum hybrid / local / D=1 / z | 3 | 0.7397 ± 0.0084 | 0.7385 ± 0.0094 | 0.7385 ± 0.0048 | 0.7383 ± 0.0049 |
+| Quantum hybrid / all_to_all / D=1 / z | 6 | 0.7352 ± 0.0059 | 0.7346 ± 0.0055 | 0.7367 ± 0.0043 | 0.7366 ± 0.0043 |
+| Param-matched MLP | – | 0.5088 ± 0.0038 | 0.4653 ± 0.0553 | 0.6207 ± 0.0353 | 0.6132 ± 0.0451 |
+| Quantum hybrid / mismatched / D=1 / z | 2 | 0.5095 ± 0.0088 | 0.4860 ± 0.0217 | 0.4983 ± 0.0048 | 0.4450 ± 0.0536 |
+| Quantum hybrid / none / D=1 / z | 0 | 0.4963 ± 0.0102 | 0.4377 ± 0.0715 | 0.4933 ± 0.0083 | 0.3918 ± 0.0644 |
+
+![S3](figures/s3_classification.png)
+
+Learned RZZ topology: the target edges (0,2) and (1,3) carry 91–98% of the total entangling strength in all 6 runs, as in S2.
+

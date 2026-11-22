@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import itertools
+import warnings
 
 import numpy as np
 import torch
-from sklearn.linear_model import RidgeCV
+from sklearn.linear_model import LogisticRegressionCV, RidgeCV
 from torch import nn
 
 
@@ -58,6 +59,12 @@ class MatchedMLP(nn.Module):
         return self.net(torch.cat([amp, torch.cos(phase), torch.sin(phase)], -1)).squeeze(-1)
 
 
+def _explicit_features(amp: np.ndarray, phase: np.ndarray) -> np.ndarray:
+    z = np.concatenate([amp * np.cos(phase), amp * np.sin(phase)], axis=1)
+    prods = [z[:, a] * z[:, b] for a, b in itertools.combinations_with_replacement(range(z.shape[1]), 2)]
+    return np.column_stack([z, *prods])
+
+
 class ExplicitInteraction:
     """Ridge regression on z = [A cos phi, A sin phi] and all pairwise products z_a z_b.
 
@@ -66,9 +73,7 @@ class ExplicitInteraction:
     """
 
     def _features(self, amp: np.ndarray, phase: np.ndarray) -> np.ndarray:
-        z = np.concatenate([amp * np.cos(phase), amp * np.sin(phase)], axis=1)
-        prods = [z[:, a] * z[:, b] for a, b in itertools.combinations_with_replacement(range(z.shape[1]), 2)]
-        return np.column_stack([z, *prods])
+        return _explicit_features(amp, phase)
 
     def fit(self, amp: np.ndarray, phase: np.ndarray, y: np.ndarray) -> ExplicitInteraction:
         self.model = RidgeCV(alphas=np.logspace(-6, 2, 17)).fit(self._features(amp, phase), y)
@@ -77,3 +82,21 @@ class ExplicitInteraction:
 
     def predict(self, amp: np.ndarray, phase: np.ndarray) -> np.ndarray:
         return self.model.predict(self._features(amp, phase))
+
+
+class ExplicitInteractionClassifier:
+    """Logistic regression on the same quadratic features (oracle-structured control for S3).
+
+    ``predict`` returns the logit, so it can be thresholded at 0 like the neural models.
+    """
+
+    def fit(self, amp: np.ndarray, phase: np.ndarray, y: np.ndarray) -> ExplicitInteractionClassifier:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)  # sklearn 1.8 default-change notices
+            self.model = LogisticRegressionCV(Cs=np.logspace(-2, 4, 13), max_iter=5000).fit(
+                _explicit_features(amp, phase), y.astype(int))
+        self.n_params = self.model.coef_.size + 1
+        return self
+
+    def predict(self, amp: np.ndarray, phase: np.ndarray) -> np.ndarray:
+        return self.model.decision_function(_explicit_features(amp, phase))
